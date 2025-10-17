@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Stats from '@/components/composite/Stats';
 
 export default function HeroBanner() {
   return (
@@ -14,12 +15,12 @@ export default function HeroBanner() {
             </div>
             
             <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-gray-900 leading-tight">
-              New Autumn
-              <span className="block text-blue-600">Collection</span>
+              Bộ sưu tập 
+              <span className="block text-blue-600">Mùa Hè</span>
             </h1>
             
             <p className="text-lg md:text-xl text-gray-600 max-w-lg">
-              Khám phá những xu hướng thời trang mới nhất cho mùa thu. 
+              Khám phá những xu hướng thời trang mới nhất cho mùa hè.
               Phong cách độc đáo, chất lượng vượt trội.
             </p>
             
@@ -38,20 +39,9 @@ export default function HeroBanner() {
               </Link>
             </div>
             
-            {/* Stats */}
-            <div className="flex gap-8 justify-center md:justify-start pt-8">
-              <div>
-                <div className="text-3xl font-bold text-gray-900">500+</div>
-                <div className="text-sm text-gray-600">Sản Phẩm</div>
-              </div>
-              <div>
-                <div className="text-3xl font-bold text-gray-900">10k+</div>
-                <div className="text-sm text-gray-600">Khách Hàng</div>
-              </div>
-              <div>
-                <div className="text-3xl font-bold text-gray-900">4.8★</div>
-                <div className="text-sm text-gray-600">Đánh Giá</div>
-              </div>
+            {/* Animated Stats */}
+            <div className="pt-8">
+              <Stats />
             </div>
           </div>
           
