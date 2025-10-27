@@ -30,7 +30,6 @@ const categories = [
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [hoveredCategory, setHoveredCategory] = useState(null);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -41,14 +40,14 @@ export default function Header() {
   };
 
   return (
-    <header className="bg-white shadow-md sticky top-0 z-50">
+    <header className="bg-white shadow-sm sticky top-0 z-50 border-b border-zinc-200">
       {/* Top Bar */}
-      <div className="bg-gray-900 text-white text-sm py-2">
+      <div className="bg-zinc-900 text-white text-sm py-2">
         <div className="container mx-auto px-4 flex justify-between items-center">
           <p>Miễn phí vận chuyển cho đơn hàng trên 500.000đ</p>
           <div className="flex gap-4">
-            <Link href="/help" className="hover:text-gray-300">Trợ giúp</Link>
-            <Link href="/contact" className="hover:text-gray-300">Liên hệ</Link>
+            <Link href="/help" className="hover:text-zinc-300 transition-colors">Trợ giúp</Link>
+            <Link href="/contact" className="hover:text-zinc-300 transition-colors">Liên hệ</Link>
           </div>
         </div>
       </div>
@@ -58,8 +57,8 @@ export default function Header() {
         <div className="flex items-center justify-between gap-4">
           {/* Logo */}
           <Link href="/" className="flex items-center">
-            <div className="text-2xl font-bold text-gray-900">
-              VYRON<span className="text-blue-600">FASHION</span>
+            <div className="text-2xl font-bold text-zinc-900 font-serif tracking-tight">
+              VYRON<span className="font-light">FASHION</span>
             </div>
           </Link>
 
@@ -69,30 +68,26 @@ export default function Header() {
               <div
                 key={category.slug}
                 className="relative group"
-                onMouseEnter={() => setHoveredCategory(category.slug)}
-                onMouseLeave={() => setHoveredCategory(null)}
               >
                 <Link
                   href={`/category/${category.slug}`}
-                  className="text-gray-700 hover:text-blue-600 font-medium transition-colors"
+                  className="text-zinc-700 hover:text-zinc-900 font-medium transition-colors py-6 block relative after:absolute after:bottom-4 after:left-0 after:w-0 after:h-0.5 after:bg-zinc-900 after:transition-all hover:after:w-full"
                 >
                   {category.name}
                 </Link>
                 
                 {/* Dropdown Subcategories */}
-                {hoveredCategory === category.slug && (
-                  <div className="absolute top-full left-0 mt-2 w-48 bg-white shadow-lg rounded-lg py-2 border border-gray-100">
-                    {category.subcategories.map((sub) => (
-                      <Link
-                        key={sub}
-                        href={`/category/${category.slug}?sub=${encodeURIComponent(sub)}`}
-                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                      >
-                        {sub}
-                      </Link>
-                    ))}
-                  </div>
-                )}
+                <div className="absolute top-full left-0 w-48 bg-white shadow-lg rounded-lg py-2 border border-zinc-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                  {category.subcategories.map((sub) => (
+                    <Link
+                      key={sub}
+                      href={`/category/${category.slug}?sub=${encodeURIComponent(sub)}`}
+                      className="block px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900 transition-colors"
+                    >
+                      {sub}
+                    </Link>
+                  ))}
+                </div>
               </div>
             ))}
           </nav>
@@ -105,11 +100,11 @@ export default function Header() {
                 placeholder="Tìm kiếm sản phẩm..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 pr-10 border border-zinc-300 rounded-full focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent bg-white text-zinc-900 placeholder:text-zinc-500"
               />
               <button
                 type="submit"
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-blue-600"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-900 transition-colors"
               >
                 <MagnifyingGlassIcon className="w-5 h-5" />
               </button>
@@ -119,14 +114,18 @@ export default function Header() {
           {/* User Actions */}
           <div className="flex items-center gap-4">
             {/* User Icon */}
-            <Link href="/auth/login" className="text-gray-700 hover:text-blue-600 transition-colors">
+            <Link href="/auth/login" className="text-zinc-700 hover:text-zinc-900 transition-colors">
               <UserIcon className="w-6 h-6" />
             </Link>
 
             {/* Cart Icon with Badge */}
-            <Link href="/cart" className="relative text-gray-700 hover:text-blue-600 transition-colors">
+            <Link 
+              href="/cart" 
+              className="relative text-zinc-700 hover:text-zinc-900 transition-colors"
+              data-cart-icon
+            >
               <ShoppingCartIcon className="w-6 h-6" />
-              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-semibold">
+              <span className="absolute -top-2 -right-2 bg-zinc-900 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-semibold">
                 0
               </span>
             </Link>
@@ -134,7 +133,7 @@ export default function Header() {
             {/* Mobile Menu Toggle */}
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="lg:hidden text-gray-700 hover:text-blue-600"
+              className="lg:hidden text-zinc-700 hover:text-zinc-900 transition-colors"
             >
               {isMenuOpen ? (
                 <XMarkIcon className="w-6 h-6" />
@@ -153,11 +152,11 @@ export default function Header() {
               placeholder="Tìm kiếm sản phẩm..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 pr-10 border border-zinc-300 rounded-full focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent bg-white text-zinc-900 placeholder:text-zinc-500"
             />
             <button
               type="submit"
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-blue-600"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-900 transition-colors"
             >
               <MagnifyingGlassIcon className="w-5 h-5" />
             </button>
@@ -167,13 +166,13 @@ export default function Header() {
 
       {/* Mobile Menu */}
       {isMenuOpen && (
-        <div className="lg:hidden border-t border-gray-200 bg-white">
+        <div className="lg:hidden border-t border-zinc-200 bg-white">
           <nav className="container mx-auto px-4 py-4">
             {categories.map((category) => (
               <div key={category.slug} className="mb-4">
                 <Link
                   href={`/category/${category.slug}`}
-                  className="block text-gray-700 hover:text-blue-600 font-medium py-2"
+                  className="block text-zinc-700 hover:text-zinc-900 font-medium py-2 transition-colors"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   {category.name}
@@ -183,7 +182,7 @@ export default function Header() {
                     <Link
                       key={sub}
                       href={`/category/${category.slug}?sub=${encodeURIComponent(sub)}`}
-                      className="block text-sm text-gray-600 hover:text-blue-600 py-1"
+                      className="block text-sm text-zinc-600 hover:text-zinc-900 py-1 transition-colors"
                       onClick={() => setIsMenuOpen(false)}
                     >
                       {sub}

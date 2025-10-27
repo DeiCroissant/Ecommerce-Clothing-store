@@ -64,14 +64,14 @@ export default function EnhancedProductCard({ product }) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="group relative bg-white rounded-lg overflow-hidden hover:shadow-xl transition-all duration-300"
+      className="group relative bg-white rounded-lg overflow-hidden border border-zinc-200 hover:border-zinc-300 transition-all duration-300"
     >
       <Link href={`/products/${slug}`} className="block">
         {/* Image Container - Fixed 3:4 Aspect Ratio */}
-        <div className="relative aspect-[3/4] bg-gray-100 overflow-hidden">
+        <div className="relative aspect-[3/4] bg-stone-50 overflow-hidden">
           {/* Skeleton Loader */}
           {!imageLoaded && (
-            <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 animate-pulse" />
+            <div className="absolute inset-0 bg-gradient-to-r from-zinc-200 via-zinc-300 to-zinc-200 animate-pulse" />
           )}
 
           {/* Product Image */}
@@ -80,7 +80,7 @@ export default function EnhancedProductCard({ product }) {
             alt={name}
             loading="lazy"
             onLoad={() => setImageLoaded(true)}
-            className={`w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 ${
+            className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ${
               imageLoaded ? 'opacity-100' : 'opacity-0'
             }`}
           />
@@ -88,22 +88,22 @@ export default function EnhancedProductCard({ product }) {
           {/* Badges */}
           <div className="absolute top-3 left-3 flex flex-col gap-2">
             {isNew && (
-              <span className="bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg">
+              <span className="bg-zinc-900 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg uppercase tracking-wide">
                 NEW
               </span>
             )}
             {discount && (
-              <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg">
+              <span className="bg-zinc-800 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg uppercase tracking-wide">
                 -{discount}%
               </span>
             )}
             {isBestSeller && (
-              <span className="bg-yellow-500 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg">
+              <span className="bg-zinc-700 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg uppercase tracking-wide">
                 Best Seller
               </span>
             )}
             {isAiPick && (
-              <span className="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg flex items-center gap-1">
+              <span className="bg-gradient-to-r from-zinc-800 to-zinc-600 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg flex items-center gap-1 uppercase tracking-wide">
                 <SparklesIcon className="w-3 h-3" />
                 AI Pick
               </span>
@@ -116,9 +116,9 @@ export default function EnhancedProductCard({ product }) {
             className="absolute top-3 right-3 p-2 bg-white/90 backdrop-blur-sm rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 hover:scale-110 z-10"
           >
             {isWishlisted ? (
-              <HeartIconSolid className="w-5 h-5 text-red-500" />
+              <HeartIconSolid className="w-5 h-5 text-zinc-900" />
             ) : (
-              <HeartIcon className="w-5 h-5 text-gray-700" />
+              <HeartIcon className="w-5 h-5 text-zinc-700" />
             )}
           </button>
 
@@ -152,7 +152,7 @@ export default function EnhancedProductCard({ product }) {
                 e.preventDefault();
                 setShowQuickView(true);
               }}
-              className="w-full flex items-center justify-center gap-2 bg-white text-gray-900 py-2 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+              className="w-full flex items-center justify-center gap-2 bg-white text-zinc-900 py-2 rounded-lg font-semibold hover:bg-zinc-100 transition-colors"
             >
               <EyeIcon className="w-5 h-5" />
               <span>Xem Nhanh</span>
@@ -162,7 +162,7 @@ export default function EnhancedProductCard({ product }) {
           {/* Out of Stock Overlay */}
           {!inStock && (
             <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-              <span className="bg-gray-900 text-white px-4 py-2 rounded-lg font-bold">
+              <span className="bg-zinc-900 text-white px-4 py-2 rounded-lg font-bold uppercase tracking-wide">
                 HẾT HÀNG
               </span>
             </div>
@@ -172,7 +172,7 @@ export default function EnhancedProductCard({ product }) {
         {/* Product Info */}
         <div className="p-4">
           {/* Product Name */}
-          <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">
+          <h3 className="font-semibold text-zinc-900 mb-2 line-clamp-2 group-hover:text-zinc-600 transition-colors">
             {name}
           </h3>
 
@@ -184,24 +184,24 @@ export default function EnhancedProductCard({ product }) {
                   key={i}
                   className={`w-4 h-4 ${
                     i < Math.floor(rating)
-                      ? 'text-yellow-400 fill-yellow-400'
-                      : 'text-gray-300'
+                      ? 'text-zinc-800 fill-zinc-800'
+                      : 'text-zinc-300'
                   }`}
                 />
               ))}
             </div>
-            <span className="text-sm text-gray-600">
+            <span className="text-sm text-zinc-600">
               {rating} ({reviewCount})
             </span>
           </div>
 
           {/* Price */}
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-xl font-bold text-gray-900">
+            <span className="text-xl font-bold text-zinc-900">
               {price.toLocaleString('vi-VN')}đ
             </span>
             {originalPrice && (
-              <span className="text-sm text-gray-500 line-through">
+              <span className="text-sm text-zinc-500 line-through">
                 {originalPrice.toLocaleString('vi-VN')}đ
               </span>
             )}
@@ -221,8 +221,8 @@ export default function EnhancedProductCard({ product }) {
                     }}
                     className={`px-3 py-1.5 text-sm font-medium rounded border transition-all ${
                       selectedSize === size
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-600'
+                        ? 'bg-zinc-900 text-white border-zinc-900'
+                        : 'bg-white text-zinc-700 border-zinc-300 hover:border-zinc-900'
                     }`}
                   >
                     {size}
@@ -239,8 +239,8 @@ export default function EnhancedProductCard({ product }) {
                 disabled={!selectedSize}
                 className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg font-semibold transition-all ${
                   selectedSize
-                    ? 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg'
-                    : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                    ? 'bg-zinc-900 text-white hover:bg-zinc-800 hover:shadow-lg'
+                    : 'bg-zinc-200 text-zinc-500 cursor-not-allowed'
                 }`}
               >
                 <ShoppingBagIcon className="w-5 h-5" />

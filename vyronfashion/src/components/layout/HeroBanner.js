@@ -3,37 +3,37 @@ import Stats from '@/components/composite/Stats';
 
 export default function HeroBanner() {
   return (
-    <section className="relative bg-gradient-to-r from-blue-50 to-purple-50 overflow-hidden">
-      <div className="container mx-auto px-4 py-20 md:py-32">
+    <section className="relative bg-stone-50 overflow-hidden">
+      <div className="container mx-auto px-4 py-24 md:py-32">
         <div className="grid md:grid-cols-2 gap-12 items-center">
           {/* Left Content */}
           <div className="space-y-6 text-center md:text-left z-10">
             <div className="inline-block">
-              <span className="bg-blue-600 text-white px-4 py-2 rounded-full text-sm font-semibold">
+              <span className="bg-zinc-900 text-white px-6 py-2 rounded-full text-sm font-medium tracking-wide uppercase">
                 Bộ Sưu Tập Mới
               </span>
             </div>
             
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-gray-900 leading-tight">
+            <h1 className="text-5xl md:text-6xl lg:text-7xl font-serif font-bold text-zinc-900 leading-tight">
               Bộ sưu tập 
-              <span className="block text-blue-600">Mùa Hè</span>
+              <span className="block font-light italic">Mùa Hè</span>
             </h1>
             
-            <p className="text-lg md:text-xl text-gray-600 max-w-lg">
+            <p className="text-lg md:text-xl text-zinc-600 max-w-lg leading-relaxed">
               Khám phá những xu hướng thời trang mới nhất cho mùa hè.
               Phong cách độc đáo, chất lượng vượt trội.
             </p>
             
-            <div className="flex flex-col sm:flex-row gap-4 justify-center md:justify-start">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center md:justify-start pt-4">
               <Link
                 href="/products"
-                className="bg-blue-600 text-white px-8 py-4 rounded-full font-semibold hover:bg-blue-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+                className="bg-zinc-900 text-white px-8 py-4 rounded-full font-semibold hover:bg-zinc-800 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
               >
                 Mua Ngay
               </Link>
               <Link
                 href="/category/ao-nam"
-                className="bg-white text-gray-900 px-8 py-4 rounded-full font-semibold hover:bg-gray-100 transition-all duration-300 border-2 border-gray-200 hover:border-blue-600"
+                className="bg-transparent text-zinc-900 px-8 py-4 rounded-full font-semibold hover:bg-zinc-900 hover:text-white transition-all duration-300 border-2 border-zinc-900"
               >
                 Xem Chi Tiết
               </Link>
@@ -48,9 +48,9 @@ export default function HeroBanner() {
           {/* Right Image */}
           <div className="relative">
             <div className="relative w-full h-[500px] md:h-[600px]">
-              {/* Decorative background */}
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-400 to-purple-500 rounded-3xl transform rotate-3 opacity-20"></div>
-              <div className="relative w-full h-full bg-gray-200 rounded-3xl overflow-hidden shadow-2xl">
+              {/* Subtle decorative background */}
+              <div className="absolute inset-0 bg-zinc-200 rounded-3xl transform rotate-2 opacity-30"></div>
+              <div className="relative w-full h-full bg-zinc-100 rounded-3xl overflow-hidden shadow-2xl border border-zinc-200">
                 {/* Main Hero Image */}
                 <img
                   src="/images/banners/hero-autumn.jpg"
@@ -59,18 +59,8 @@ export default function HeroBanner() {
                 />
               </div>
             </div>
-            
-            {/* Decorative Elements */}
-            <div className="absolute -top-4 -right-4 w-24 h-24 bg-yellow-400 rounded-full opacity-60 blur-2xl"></div>
-            <div className="absolute -bottom-4 -left-4 w-32 h-32 bg-pink-400 rounded-full opacity-60 blur-2xl"></div>
           </div>
         </div>
-      </div>
-      
-      {/* Background Decorations */}
-      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-        <div className="absolute top-10 left-10 w-20 h-20 bg-blue-300 rounded-full opacity-20 animate-pulse"></div>
-        <div className="absolute bottom-20 right-20 w-32 h-32 bg-purple-300 rounded-full opacity-20 animate-pulse delay-150"></div>
       </div>
     </section>
   );

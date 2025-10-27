@@ -8,14 +8,14 @@ export default function CategoryCard({ category }) {
   return (
     <Link
       href={`/category/${slug}`}
-      className="group relative block overflow-hidden rounded-lg shadow-md hover:shadow-2xl transition-all duration-300"
+      className="group relative block overflow-hidden rounded-lg border border-zinc-200 hover:border-zinc-300 transition-all duration-300 shadow-sm hover:shadow-md"
     >
       {/* Image Container */}
-      <div className="relative aspect-square overflow-hidden">
+      <div className="relative aspect-square overflow-hidden bg-stone-50">
         <img
           src={image || '/images/placeholders/category-placeholder.jpg'}
           alt={name}
-          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
         />
         
         {/* Overlay */}
@@ -24,11 +24,11 @@ export default function CategoryCard({ category }) {
 
       {/* Content */}
       <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
-        <h3 className="text-2xl font-bold mb-1 group-hover:text-blue-300 transition-colors">
+        <h3 className="text-2xl font-serif font-bold mb-1 group-hover:translate-x-1 transition-transform duration-300">
           {name}
         </h3>
         {productCount && (
-          <p className="text-sm text-gray-200">
+          <p className="text-sm text-zinc-200">
             {productCount} sản phẩm
           </p>
         )}

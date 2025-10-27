@@ -132,15 +132,15 @@ export default function NewArrivals() {
   };
 
   return (
-    <section className="py-16 bg-white">
+    <section className="py-24 bg-white">
       <div className="container mx-auto px-4">
         {/* Section Header */}
         <div className="flex items-center justify-between mb-12">
           <div>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
+            <h2 className="text-3xl md:text-4xl font-serif font-bold text-zinc-900 mb-2">
               Sản Phẩm Mới
             </h2>
-            <p className="text-gray-600">
+            <p className="text-zinc-600">
               Khám phá những sản phẩm mới nhất vừa được cập nhật
             </p>
           </div>
@@ -150,14 +150,14 @@ export default function NewArrivals() {
             <button
               onClick={handlePrev}
               disabled={currentIndex === 0}
-              className="p-2 rounded-full border-2 border-gray-300 hover:border-black hover:bg-black hover:text-white transition-all disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-gray-400 disabled:hover:border-gray-300 disabled:cursor-not-allowed"
+              className="p-2 rounded-full border-2 border-zinc-300 hover:border-zinc-900 hover:bg-zinc-900 hover:text-white transition-all disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-zinc-400 disabled:hover:border-zinc-300 disabled:cursor-not-allowed"
             >
               <ChevronLeftIcon className="w-6 h-6" />
             </button>
             <button
               onClick={handleNext}
               disabled={currentIndex >= maxIndex}
-              className="p-2 rounded-full border-2 border-gray-300 hover:border-black hover:bg-black hover:text-white transition-all disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-gray-400 disabled:hover:border-gray-300 disabled:cursor-not-allowed"
+              className="p-2 rounded-full border-2 border-zinc-300 hover:border-zinc-900 hover:bg-zinc-900 hover:text-white transition-all disabled:opacity-30 disabled:hover:bg-white disabled:hover:text-zinc-400 disabled:hover:border-zinc-300 disabled:cursor-not-allowed"
             >
               <ChevronRightIcon className="w-6 h-6" />
             </button>
@@ -192,8 +192,8 @@ export default function NewArrivals() {
               onClick={() => setCurrentIndex(index)}
               className={`w-2 h-2 rounded-full transition-all ${
                 index === currentIndex
-                  ? 'bg-black w-8'
-                  : 'bg-gray-300 hover:bg-gray-400'
+                  ? 'bg-zinc-900 w-8'
+                  : 'bg-zinc-300 hover:bg-zinc-400'
               }`}
             />
           ))}
@@ -203,7 +203,7 @@ export default function NewArrivals() {
         <div className="text-center mt-12">
           <a
             href="/products?filter=new"
-            className="inline-block px-8 py-3 bg-black text-white rounded-full hover:bg-gray-800 transition-colors font-medium"
+            className="inline-block px-8 py-3 bg-zinc-900 text-white rounded-full hover:bg-zinc-800 transition-colors font-medium"
           >
             Xem Tất Cả Sản Phẩm Mới
           </a>
