@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion';
 import { HeartIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { formatVND } from '@/lib/formatCurrency';
 
 /**
  * EmptyResults Component
@@ -102,11 +103,11 @@ export default function EmptyResults({
                     </h4>
                     <div className="flex items-center gap-2">
                       <span className="text-lg font-bold text-gray-900">
-                        {product.price.toLocaleString('vi-VN')}đ
+                        {formatVND(product.price)}
                       </span>
                       {product.originalPrice && (
                         <span className="text-xs text-gray-500 line-through">
-                          {product.originalPrice.toLocaleString('vi-VN')}đ
+                          {formatVND(product.originalPrice)}
                         </span>
                       )}
                     </div>

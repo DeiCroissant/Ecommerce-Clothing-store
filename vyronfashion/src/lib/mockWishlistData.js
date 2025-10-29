@@ -580,14 +580,19 @@ export function getPriceChange(item) {
 
 /**
  * Load wishlist from localStorage
- * ✅ Returns parsed data or empty array
+ * ✅ Returns parsed data or mock data on first load
  */
 export function loadWishlistFromStorage() {
   if (typeof window === 'undefined') return [];
   
   try {
     const stored = localStorage.getItem(WISHLIST_STORAGE_KEY);
-    return stored ? JSON.parse(stored) : [];
+    if (stored) {
+      return JSON.parse(stored);
+    } else {
+      // First time - load mock data
+      return mockWishlistItems;
+    }
   } catch (error) {
     console.error('Failed to load wishlist:', error);
     return [];
