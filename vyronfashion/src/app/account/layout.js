@@ -3,6 +3,8 @@ import { MobileAccountNav } from '@/components/account/layout/MobileAccountNav'
 import { SkipToContent } from '@/components/account/layout/SkipToContent'
 import { AccountBreadcrumbs } from '@/components/account/layout/AccountBreadcrumbs'
 import '@/styles/account.css'
+import '@/styles/account-overview.css'
+import '@/styles/account-profile.css'
 
 export const metadata = {
   title: {

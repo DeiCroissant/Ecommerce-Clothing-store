@@ -1,10 +1,17 @@
-import { PageHeader, AccountCard } from '@/components/account'
+'use client'
 
-export const metadata = {
-  title: 'Thông tin cá nhân',
-}
+import { useState } from 'react'
+import { PageHeader, AccountCard } from '@/components/account'
+import { ProfileForm } from '@/components/account/profile/ProfileForm'
+import { mockUser } from '@/lib/account/mockUserData'
 
 export default function ProfilePage() {
+  const [user, setUser] = useState(mockUser)
+
+  const handleUpdate = (updatedData) => {
+    setUser({ ...user, ...updatedData })
+  }
+
   return (
     <div className="profile-page">
       <PageHeader
@@ -12,10 +19,8 @@ export default function ProfilePage() {
         description="Quản lý thông tin và tùy chỉnh hồ sơ của bạn"
       />
 
-      <AccountCard title="Thông tin tài khoản">
-        <p className="text-gray-600">
-          Profile form coming in Phase 2...
-        </p>
+      <AccountCard>
+        <ProfileForm user={user} onUpdate={handleUpdate} />
       </AccountCard>
     </div>
   )

@@ -1,0 +1,621 @@
+/**
+ * Account Overview Styles
+ * Dashboard and quick actions
+ */
+
+/* ============================================
+   Overview Page Layout
+   ============================================ */
+.overview-page {
+  animation: fadeIn 0.3s ease;
+}
+
+.space-y-6 > * + * {
+  margin-top: 24px;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================================
+   User Welcome Card
+   ============================================ */
+.user-welcome-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 16px;
+  padding: 32px;
+  color: white;
+  box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
+}
+
+.welcome-content {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.avatar-section .avatar {
+  border-radius: 50%;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  object-fit: cover;
+}
+
+.user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-name {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+  line-height: 1.2;
+}
+
+.email-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.email {
+  font-size: 0.9375rem;
+  opacity: 0.9;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge.verified {
+  background: rgba(16, 185, 129, 0.2);
+  color: #d1fae5;
+}
+
+.badge.unverified {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fecaca;
+}
+
+/* User Stats */
+.user-stats {
+  display: flex;
+  gap: 32px;
+  margin: 16px 0;
+  padding: 16px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  flex-wrap: wrap;
+}
+
+.stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stat-icon {
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.stat > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat .label {
+  font-size: 0.8125rem;
+  opacity: 0.8;
+}
+
+.stat .value {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+/* Profile Completeness */
+.profile-completeness {
+  margin: 16px 0;
+}
+
+.completeness-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.progress-bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.completion-hint {
+  margin-top: 8px;
+  font-size: 0.8125rem;
+  opacity: 0.9;
+}
+
+/* Edit Profile Button */
+.edit-profile-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 20px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  color: white;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  transition: all 0.2s;
+  margin-top: 16px;
+}
+
+.edit-profile-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+/* ============================================
+   Email Verification Banner
+   ============================================ */
+.email-verification-banner {
+  background: #fef3c7;
+  border: 1px solid #fbbf24;
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.banner-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.banner-icon {
+  color: #f59e0b;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.banner-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.banner-text strong {
+  display: block;
+  color: #92400e;
+  margin-bottom: 4px;
+  font-size: 0.9375rem;
+}
+
+.banner-text p {
+  color: #78350f;
+  font-size: 0.875rem;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.resend-btn {
+  padding: 8px 16px;
+  background: #f59e0b;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.resend-btn:hover:not(:disabled) {
+  background: #d97706;
+  transform: translateY(-1px);
+}
+
+.resend-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.close-btn {
+  padding: 6px;
+  background: transparent;
+  border: none;
+  color: #92400e;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.close-btn:hover {
+  background: rgba(146, 64, 14, 0.1);
+}
+
+.success-message {
+  padding: 12px;
+  background: #d1fae5;
+  border: 1px solid #10b981;
+  border-radius: 6px;
+  color: #065f46;
+  font-size: 0.875rem;
+}
+
+/* ============================================
+   Quick Actions Grid
+   ============================================ */
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+}
+
+.quick-action-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  text-decoration: none;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+
+.quick-action-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--action-color);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.3s;
+}
+
+.quick-action-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+.quick-action-card:hover::before {
+  transform: scaleX(1);
+}
+
+.action-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--action-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0.1;
+}
+
+.action-icon {
+  color: var(--action-color);
+  opacity: 1;
+}
+
+.action-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.action-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #6b7280;
+  margin: 0 0 4px 0;
+}
+
+.action-value {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.action-value .value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.action-value .label {
+  font-size: 0.875rem;
+  color: #9ca3af;
+}
+
+.action-arrow {
+  color: #d1d5db;
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+
+.quick-action-card:hover .action-arrow {
+  transform: translateX(4px);
+  color: var(--action-color);
+}
+
+/* ============================================
+   Recent Orders Widget
+   ============================================ */
+.recent-orders-widget {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.widget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.widget-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+.view-all-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #6b7280;
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.view-all-link:hover {
+  color: #111827;
+}
+
+.orders-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.order-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 24px;
+  text-decoration: none;
+  transition: background 0.2s;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.order-item:last-child {
+  border-bottom: none;
+}
+
+.order-item:hover {
+  background: #f9fafb;
+}
+
+.order-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.order-id {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 4px;
+}
+
+.order-id svg {
+  color: #6b7280;
+}
+
+.order-date {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.order-status {
+  flex-shrink: 0;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--status-color) 10%, white);
+  color: var(--status-color);
+}
+
+.order-total {
+  font-weight: 600;
+  color: #111827;
+  flex-shrink: 0;
+  min-width: 120px;
+  text-align: right;
+}
+
+.order-arrow {
+  color: #d1d5db;
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+
+.order-item:hover .order-arrow {
+  transform: translateX(4px);
+  color: #6b7280;
+}
+
+/* ============================================
+   Responsive Styles
+   ============================================ */
+@media (max-width: 1023px) {
+  .quick-actions-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 767px) {
+  .user-welcome-card {
+    padding: 24px;
+  }
+
+  .welcome-content {
+    flex-direction: column;
+    text-align: center;
+    align-items: center;
+  }
+
+  .avatar-section {
+    align-self: center;
+  }
+
+  .user-stats {
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .stat {
+    justify-content: center;
+  }
+
+  .email-status {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .quick-actions-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .order-item {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .order-info {
+    order: 1;
+    flex: 1 1 100%;
+  }
+
+  .order-status {
+    order: 2;
+  }
+
+  .order-total {
+    order: 3;
+    min-width: auto;
+  }
+
+  .order-arrow {
+    order: 4;
+  }
+}
+
+@media (max-width: 479px) {
+  .user-name {
+    font-size: 1.5rem;
+  }
+
+  .stat .value {
+    font-size: 1.125rem;
+  }
+
+  .banner-content {
+    flex-direction: column;
+  }
+
+  .widget-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+}
+
+/* ============================================
+   Utility Classes
+   ============================================ */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 20px;
+  background: #111827;
+  color: white;
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  transition: all 0.2s;
+}
+
+.btn-primary:hover {
+  background: #374151;
+  transform: translateY(-2px);
+}
+
+/* Color utilities for status badges */
+:root {
+  --status-blue: #3b82f6;
+  --status-purple: #a855f7;
+  --status-green: #10b981;
+  --status-red: #ef4444;
+  --status-orange: #f59e0b;
+  --status-gray: #6b7280;
+}

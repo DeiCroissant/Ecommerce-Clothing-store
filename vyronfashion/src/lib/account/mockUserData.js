@@ -140,32 +140,32 @@ export const mockOrders = [
 export const orderStatusConfig = {
   pending: {
     label: 'Chờ xác nhận',
-    color: 'gray',
+    color: '#6b7280',
     description: 'Đơn hàng đang chờ xác nhận',
   },
   processing: {
     label: 'Đang xử lý',
-    color: 'blue',
+    color: '#3b82f6',
     description: 'Đơn hàng đang được chuẩn bị',
   },
   shipped: {
     label: 'Đang giao',
-    color: 'purple',
+    color: '#a855f7',
     description: 'Đơn hàng đang trên đường giao đến bạn',
   },
   delivered: {
     label: 'Đã giao',
-    color: 'green',
+    color: '#10b981',
     description: 'Đơn hàng đã được giao thành công',
   },
   cancelled: {
     label: 'Đã hủy',
-    color: 'red',
+    color: '#ef4444',
     description: 'Đơn hàng đã bị hủy',
   },
   returned: {
     label: 'Đã trả',
-    color: 'orange',
+    color: '#f59e0b',
     description: 'Đơn hàng đã được hoàn trả',
   },
 }
