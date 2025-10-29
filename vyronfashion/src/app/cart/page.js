@@ -3,7 +3,20 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { MinusIcon, PlusIcon, TrashIcon, ShoppingBagIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
+import { 
+  MinusIcon, 
+  PlusIcon, 
+  TrashIcon, 
+  ShoppingBagIcon, 
+  ArrowLeftIcon,
+  TicketIcon,
+  GiftIcon,
+  MapPinIcon,
+  BookmarkIcon,
+  XMarkIcon,
+  CheckCircleIcon
+} from '@heroicons/react/24/outline';
+import { HeartIcon } from '@heroicons/react/24/solid';
 
 // Mock cart data - sẽ thay bằng context/redux sau
 const INITIAL_CART_ITEMS = [
@@ -66,17 +79,72 @@ const INITIAL_CART_ITEMS = [
   }
 ];
 
+// Mock promo codes
+const PROMO_CODES = {
+  'WELCOME10': { discount: 10, type: 'percentage', minOrder: 200000 },
+  'SUMMER2024': { discount: 50000, type: 'fixed', minOrder: 500000 },
+  'FREESHIP': { discount: 30000, type: 'shipping', minOrder: 0 },
+  'VIP20': { discount: 20, type: 'percentage', minOrder: 1000000 }
+};
+
+// Mock provinces for shipping estimator
+const PROVINCES = [
+  { id: 'hanoi', name: 'Hà Nội', shippingFee: 30000, estimatedDays: '1-2' },
+  { id: 'hcm', name: 'TP. Hồ Chí Minh', shippingFee: 30000, estimatedDays: '1-2' },
+  { id: 'danang', name: 'Đà Nẵng', shippingFee: 35000, estimatedDays: '2-3' },
+  { id: 'haiphong', name: 'Hải Phòng', shippingFee: 32000, estimatedDays: '2-3' },
+  { id: 'cantho', name: 'Cần Thơ', shippingFee: 40000, estimatedDays: '3-4' },
+  { id: 'binhduong', name: 'Bình Dương', shippingFee: 28000, estimatedDays: '1-2' },
+  { id: 'other', name: 'Tỉnh thành khác', shippingFee: 45000, estimatedDays: '4-5' }
+];
+
 export default function CartPage() {
   const [cartItems, setCartItems] = useState(INITIAL_CART_ITEMS);
+  const [savedItems, setSavedItems] = useState([]);
   const [deletedItem, setDeletedItem] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  
+  // Promo code states
+  const [promoCode, setPromoCode] = useState('');
+  const [appliedPromo, setAppliedPromo] = useState(null);
+  const [promoError, setPromoError] = useState('');
+  
+  // Gift wrap states
+  const [giftWrap, setGiftWrap] = useState(false);
+  const [giftMessage, setGiftMessage] = useState('');
+  const giftWrapPrice = 15000;
+  
+  // Shipping estimator states
+  const [selectedProvince, setSelectedProvince] = useState(null);
 
   // Calculate totals
   const subtotal = cartItems.reduce((sum, item) => sum + (item.price.sale * item.quantity), 0);
   const shippingThreshold = 500000;
-  const shippingFee = subtotal >= shippingThreshold ? 0 : 30000;
-  const tax = Math.round(subtotal * 0.1); // 10% VAT
-  const total = subtotal + shippingFee + tax;
+  
+  // Calculate shipping fee
+  let shippingFee = 30000; // Default
+  if (selectedProvince) {
+    shippingFee = selectedProvince.shippingFee;
+  }
+  if (subtotal >= shippingThreshold || (appliedPromo && appliedPromo.type === 'shipping')) {
+    shippingFee = 0;
+  }
+  
+  // Calculate discount
+  let discount = 0;
+  if (appliedPromo) {
+    if (appliedPromo.type === 'percentage') {
+      discount = Math.round(subtotal * appliedPromo.discount / 100);
+    } else if (appliedPromo.type === 'fixed') {
+      discount = appliedPromo.discount;
+    } else if (appliedPromo.type === 'shipping') {
+      discount = shippingFee;
+    }
+  }
+  
+  const tax = Math.round((subtotal - discount) * 0.1); // 10% VAT
+  const giftWrapTotal = giftWrap ? giftWrapPrice : 0;
+  const total = subtotal - discount + shippingFee + tax + giftWrapTotal;
   const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   // Handle quantity change
@@ -118,6 +186,57 @@ export default function CartPage() {
       setCartItems(prev => [...prev, deletedItem]);
       setDeletedItem(null);
     }
+  };
+
+  // Handle promo code
+  const handleApplyPromo = () => {
+    setPromoError('');
+    
+    const code = promoCode.toUpperCase().trim();
+    if (!code) {
+      setPromoError('Vui lòng nhập mã giảm giá');
+      return;
+    }
+    
+    const promo = PROMO_CODES[code];
+    if (!promo) {
+      setPromoError('Mã giảm giá không hợp lệ');
+      return;
+    }
+    
+    if (subtotal < promo.minOrder) {
+      setPromoError(`Đơn hàng tối thiểu ${promo.minOrder.toLocaleString('vi-VN')}₫`);
+      return;
+    }
+    
+    setAppliedPromo({ code, ...promo });
+    setPromoCode('');
+  };
+
+  const handleRemovePromo = () => {
+    setAppliedPromo(null);
+    setPromoError('');
+  };
+
+  // Handle save for later
+  const handleSaveForLater = (itemId) => {
+    const item = cartItems.find(i => i.id === itemId);
+    if (item) {
+      setSavedItems(prev => [...prev, item]);
+      setCartItems(prev => prev.filter(i => i.id !== itemId));
+    }
+  };
+
+  const handleMoveToCart = (itemId) => {
+    const item = savedItems.find(i => i.id === itemId);
+    if (item) {
+      setCartItems(prev => [...prev, item]);
+      setSavedItems(prev => prev.filter(i => i.id !== itemId));
+    }
+  };
+
+  const handleRemoveSaved = (itemId) => {
+    setSavedItems(prev => prev.filter(i => i.id !== itemId));
   };
 
   // Empty cart state
@@ -203,9 +322,48 @@ export default function CartPage() {
                 item={item}
                 onQuantityChange={handleQuantityChange}
                 onDelete={handleDeleteItem}
+                onSaveForLater={handleSaveForLater}
                 isUpdating={isUpdating}
               />
             ))}
+
+            {/* Advanced Features Section */}
+            <div className="space-y-4">
+              {/* Promo Code */}
+              <PromoCodeSection
+                promoCode={promoCode}
+                setPromoCode={setPromoCode}
+                appliedPromo={appliedPromo}
+                promoError={promoError}
+                onApply={handleApplyPromo}
+                onRemove={handleRemovePromo}
+              />
+
+              {/* Gift Wrap */}
+              <GiftWrapSection
+                giftWrap={giftWrap}
+                setGiftWrap={setGiftWrap}
+                giftMessage={giftMessage}
+                setGiftMessage={setGiftMessage}
+                giftWrapPrice={giftWrapPrice}
+              />
+
+              {/* Shipping Estimator */}
+              <ShippingEstimator
+                selectedProvince={selectedProvince}
+                setSelectedProvince={setSelectedProvince}
+                provinces={PROVINCES}
+              />
+            </div>
+
+            {/* Saved Items */}
+            {savedItems.length > 0 && (
+              <SavedItemsSection
+                savedItems={savedItems}
+                onMoveToCart={handleMoveToCart}
+                onRemove={handleRemoveSaved}
+              />
+            )}
           </div>
 
           {/* Order Summary - 35% */}
@@ -213,10 +371,15 @@ export default function CartPage() {
             <div className="sticky top-24">
               <OrderSummary
                 subtotal={subtotal}
+                discount={discount}
+                appliedPromo={appliedPromo}
                 shippingFee={shippingFee}
                 shippingThreshold={shippingThreshold}
                 tax={tax}
+                giftWrap={giftWrap}
+                giftWrapPrice={giftWrapPrice}
                 total={total}
+                selectedProvince={selectedProvince}
               />
             </div>
           </div>
@@ -245,7 +408,7 @@ export default function CartPage() {
 }
 
 // Cart Item Card Component
-function CartItemCard({ item, onQuantityChange, onDelete, isUpdating }) {
+function CartItemCard({ item, onQuantityChange, onDelete, onSaveForLater, isUpdating }) {
   const [quantity, setQuantity] = useState(item.quantity);
 
   const handleDecrease = () => {
@@ -398,6 +561,17 @@ function CartItemCard({ item, onQuantityChange, onDelete, isUpdating }) {
             </div>
           </div>
 
+          {/* Desktop Actions */}
+          <div className="hidden md:flex items-center gap-4 mt-4">
+            <button
+              onClick={() => onSaveForLater(item.id)}
+              className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1 font-medium"
+            >
+              <BookmarkIcon className="w-4 h-4" />
+              Lưu lại mua sau
+            </button>
+          </div>
+
           {/* Mobile: Quantity & Price */}
           <div className="md:hidden">
             <div className="flex items-center justify-between mt-4">
@@ -439,13 +613,23 @@ function CartItemCard({ item, onQuantityChange, onDelete, isUpdating }) {
             </div>
 
             {/* Delete Button - Mobile */}
-            <button
-              onClick={() => onDelete(item.id)}
-              className="mt-3 text-sm text-red-500 hover:text-red-600 flex items-center gap-1"
-            >
-              <TrashIcon className="w-4 h-4" />
-              Xóa
-            </button>
+            <div className="mt-3 flex items-center gap-4">
+              <button
+                onClick={() => onDelete(item.id)}
+                className="text-sm text-red-500 hover:text-red-600 flex items-center gap-1"
+              >
+                <TrashIcon className="w-4 h-4" />
+                Xóa
+              </button>
+              
+              <button
+                onClick={() => onSaveForLater(item.id)}
+                className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+              >
+                <BookmarkIcon className="w-4 h-4" />
+                Lưu lại
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -453,8 +637,253 @@ function CartItemCard({ item, onQuantityChange, onDelete, isUpdating }) {
   );
 }
 
+// Promo Code Section Component
+function PromoCodeSection({ promoCode, setPromoCode, appliedPromo, promoError, onApply, onRemove }) {
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-6">
+      <div className="flex items-center gap-2 mb-4">
+        <TicketIcon className="w-5 h-5 text-blue-600" />
+        <h3 className="font-semibold text-gray-900">Mã giảm giá</h3>
+      </div>
+
+      {!appliedPromo ? (
+        <div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={promoCode}
+              onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+              onKeyDown={(e) => e.key === 'Enter' && onApply()}
+              placeholder="Nhập mã giảm giá"
+              className="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none uppercase"
+            />
+            <button
+              onClick={onApply}
+              disabled={!promoCode.trim()}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            >
+              Áp dụng
+            </button>
+          </div>
+          
+          {promoError && (
+            <p className="text-sm text-red-500 mt-2 flex items-center gap-1">
+              <XMarkIcon className="w-4 h-4" />
+              {promoError}
+            </p>
+          )}
+
+          {/* Sample codes hint */}
+          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+            <p className="text-xs text-blue-800 font-medium mb-2">Mã giảm giá khả dụng:</p>
+            <div className="flex flex-wrap gap-2">
+              <code className="text-xs bg-white px-2 py-1 rounded border border-blue-200 cursor-pointer hover:bg-blue-100" onClick={() => setPromoCode('WELCOME10')}>
+                WELCOME10
+              </code>
+              <code className="text-xs bg-white px-2 py-1 rounded border border-blue-200 cursor-pointer hover:bg-blue-100" onClick={() => setPromoCode('SUMMER2024')}>
+                SUMMER2024
+              </code>
+              <code className="text-xs bg-white px-2 py-1 rounded border border-blue-200 cursor-pointer hover:bg-blue-100" onClick={() => setPromoCode('FREESHIP')}>
+                FREESHIP
+              </code>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="p-4 bg-green-50 rounded-lg border-2 border-green-200">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-2">
+              <CheckCircleIcon className="w-5 h-5 text-green-600 mt-0.5" />
+              <div>
+                <p className="font-semibold text-green-800">
+                  Mã "{appliedPromo.code}" đã được áp dụng
+                </p>
+                <p className="text-sm text-green-700 mt-1">
+                  {appliedPromo.type === 'percentage' && `Giảm ${appliedPromo.discount}%`}
+                  {appliedPromo.type === 'fixed' && `Giảm ${appliedPromo.discount.toLocaleString('vi-VN')}₫`}
+                  {appliedPromo.type === 'shipping' && 'Miễn phí vận chuyển'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onRemove}
+              className="text-green-600 hover:text-green-700 transition-colors"
+            >
+              <XMarkIcon className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Gift Wrap Section Component
+function GiftWrapSection({ giftWrap, setGiftWrap, giftMessage, setGiftMessage, giftWrapPrice }) {
+  const maxChars = 200;
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <GiftIcon className="w-5 h-5 text-pink-600" />
+          <div>
+            <h3 className="font-semibold text-gray-900">Gói quà tặng</h3>
+            <p className="text-sm text-gray-500">+{giftWrapPrice.toLocaleString('vi-VN')}₫</p>
+          </div>
+        </div>
+        
+        <label className="relative inline-flex items-center cursor-pointer">
+          <input
+            type="checkbox"
+            checked={giftWrap}
+            onChange={(e) => setGiftWrap(e.target.checked)}
+            className="sr-only peer"
+          />
+          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+        </label>
+      </div>
+
+      {giftWrap && (
+        <div className="mt-4 animate-slide-up">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Lời nhắn (tùy chọn)
+          </label>
+          <textarea
+            value={giftMessage}
+            onChange={(e) => setGiftMessage(e.target.value.slice(0, maxChars))}
+            placeholder="Viết lời chúc của bạn..."
+            rows="3"
+            className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none resize-none"
+          />
+          <p className="text-xs text-gray-500 mt-1 text-right">
+            {giftMessage.length}/{maxChars} ký tự
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Shipping Estimator Component
+function ShippingEstimator({ selectedProvince, setSelectedProvince, provinces }) {
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-6">
+      <div className="flex items-center gap-2 mb-4">
+        <MapPinIcon className="w-5 h-5 text-purple-600" />
+        <h3 className="font-semibold text-gray-900">Ước tính vận chuyển</h3>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Chọn tỉnh/thành phố
+        </label>
+        <select
+          value={selectedProvince?.id || ''}
+          onChange={(e) => {
+            const province = provinces.find(p => p.id === e.target.value);
+            setSelectedProvince(province);
+          }}
+          className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+        >
+          <option value="">-- Chọn địa điểm --</option>
+          {provinces.map((province) => (
+            <option key={province.id} value={province.id}>
+              {province.name}
+            </option>
+          ))}
+        </select>
+
+        {selectedProvince && (
+          <div className="mt-4 p-3 bg-purple-50 rounded-lg border border-purple-200 animate-slide-up">
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-gray-700">Phí vận chuyển:</span>
+              <span className="font-semibold text-gray-900">
+                {selectedProvince.shippingFee.toLocaleString('vi-VN')}₫
+              </span>
+            </div>
+            <div className="flex justify-between items-center text-sm mt-2">
+              <span className="text-gray-700">Thời gian dự kiến:</span>
+              <span className="font-semibold text-gray-900">
+                {selectedProvince.estimatedDays} ngày
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Saved Items Section Component
+function SavedItemsSection({ savedItems, onMoveToCart, onRemove }) {
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-6 mt-8">
+      <div className="flex items-center gap-2 mb-6">
+        <HeartIcon className="w-5 h-5 text-red-500" />
+        <h3 className="font-semibold text-gray-900">
+          Đã lưu để mua sau ({savedItems.length})
+        </h3>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {savedItems.map((item) => (
+          <div key={item.id} className="border border-gray-200 rounded-lg p-4">
+            <div className="flex gap-3">
+              <div className="relative w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100">
+                <Image
+                  src={item.image}
+                  alt={item.name}
+                  fill
+                  className="object-cover"
+                  sizes="80px"
+                />
+              </div>
+              
+              <div className="flex-1 min-w-0">
+                <h4 className="font-medium text-gray-900 line-clamp-2 text-sm mb-1">
+                  {item.name}
+                </h4>
+                <p className="text-sm text-gray-600 mb-2">
+                  {item.price.sale.toLocaleString('vi-VN')}₫
+                </p>
+                
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => onMoveToCart(item.id)}
+                    className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 transition-colors"
+                  >
+                    Thêm vào giỏ
+                  </button>
+                  <button
+                    onClick={() => onRemove(item.id)}
+                    className="text-xs text-gray-600 hover:text-red-600 transition-colors"
+                  >
+                    Xóa
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Order Summary Component
-function OrderSummary({ subtotal, shippingFee, shippingThreshold, tax, total }) {
+function OrderSummary({ 
+  subtotal, 
+  discount, 
+  appliedPromo, 
+  shippingFee, 
+  shippingThreshold, 
+  tax, 
+  giftWrap, 
+  giftWrapPrice, 
+  total,
+  selectedProvince
+}) {
   const progressToFreeShipping = Math.min((subtotal / shippingThreshold) * 100, 100);
   const amountToFreeShipping = shippingThreshold - subtotal;
 
@@ -465,7 +894,7 @@ function OrderSummary({ subtotal, shippingFee, shippingThreshold, tax, total }) 
       </h2>
 
       {/* Free Shipping Progress */}
-      {shippingFee > 0 && (
+      {shippingFee > 0 && !appliedPromo && (
         <div className="mb-6 p-4 bg-blue-50 rounded-lg">
           <p className="text-sm text-blue-800 mb-2">
             Mua thêm <span className="font-semibold">{amountToFreeShipping.toLocaleString('vi-VN')}₫</span> để được <strong>miễn phí vận chuyển</strong>!
@@ -497,8 +926,24 @@ function OrderSummary({ subtotal, shippingFee, shippingThreshold, tax, total }) 
           <span className="font-medium">{subtotal.toLocaleString('vi-VN')}₫</span>
         </div>
         
+        {/* Discount */}
+        {discount > 0 && (
+          <div className="flex justify-between text-green-600">
+            <span className="flex items-center gap-1">
+              <TicketIcon className="w-4 h-4" />
+              Giảm giá {appliedPromo?.type === 'percentage' && `(${appliedPromo.discount}%)`}:
+            </span>
+            <span className="font-medium">-{discount.toLocaleString('vi-VN')}₫</span>
+          </div>
+        )}
+        
         <div className="flex justify-between text-gray-600">
-          <span>Phí vận chuyển:</span>
+          <span className="flex items-center gap-1">
+            Phí vận chuyển
+            {selectedProvince && (
+              <span className="text-xs text-gray-500">({selectedProvince.name})</span>
+            )}:
+          </span>
           <span className="font-medium">
             {shippingFee === 0 ? (
               <span className="text-green-600">Miễn phí</span>
@@ -507,6 +952,17 @@ function OrderSummary({ subtotal, shippingFee, shippingThreshold, tax, total }) 
             )}
           </span>
         </div>
+
+        {/* Gift Wrap */}
+        {giftWrap && (
+          <div className="flex justify-between text-gray-600">
+            <span className="flex items-center gap-1">
+              <GiftIcon className="w-4 h-4" />
+              Gói quà:
+            </span>
+            <span className="font-medium">{giftWrapPrice.toLocaleString('vi-VN')}₫</span>
+          </div>
+        )}
 
         <div className="flex justify-between text-gray-600">
           <span>VAT (10%):</span>
@@ -522,6 +978,11 @@ function OrderSummary({ subtotal, shippingFee, shippingThreshold, tax, total }) 
             {total.toLocaleString('vi-VN')}₫
           </span>
         </div>
+        {discount > 0 && (
+          <p className="text-sm text-green-600 text-right mt-1">
+            Bạn tiết kiệm được {discount.toLocaleString('vi-VN')}₫
+          </p>
+        )}
       </div>
 
       {/* Checkout Button */}
