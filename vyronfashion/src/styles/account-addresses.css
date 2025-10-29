@@ -1,0 +1,539 @@
+/**
+ * Account Addresses Styles
+ * Theme: Minimalist Zinc (đồng bộ với website)
+ */
+
+/* ============================================
+   Addresses Header
+   ============================================ */
+.addresses-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding: 20px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.addresses-count {
+  font-size: 0.9375rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.addresses-limit {
+  font-size: 0.875rem;
+  color: var(--muted);
+  font-style: italic;
+  margin: 0;
+}
+
+/* ============================================
+   Addresses Grid
+   ============================================ */
+.addresses-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  margin-bottom: 32px;
+}
+
+/* ============================================
+   Address Card
+   ============================================ */
+.address-card {
+  background: white;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.address-card:hover {
+  border-color: var(--foreground);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+/* Header */
+.address-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.address-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.label-icon {
+  font-size: 1.25rem;
+}
+
+.label-text {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.default-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  background: #d1fae5;
+  color: #065f46;
+  border-radius: 12px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* Body */
+.address-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+}
+
+.recipient-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recipient-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--foreground);
+  margin: 0;
+}
+
+.recipient-phone {
+  font-size: 0.875rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.address-details {
+  display: flex;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.address-details svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.address-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.address-text p {
+  margin: 0;
+}
+
+/* Actions */
+.address-card-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.btn-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1.5px solid var(--border);
+  background: white;
+  color: var(--foreground);
+  flex: 1;
+}
+
+.btn-action:hover {
+  background: var(--background);
+  border-color: var(--accent);
+}
+
+.btn-edit:hover {
+  border-color: #3b82f6;
+  color: #3b82f6;
+  background: #eff6ff;
+}
+
+.btn-delete:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: #fef2f2;
+}
+
+.btn-set-default:hover {
+  border-color: #10b981;
+  color: #10b981;
+  background: #f0fdf4;
+}
+
+/* ============================================
+   Empty State
+   ============================================ */
+.empty-addresses {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  background: white;
+  border: 1.5px dashed var(--border);
+  border-radius: 12px;
+  min-height: 400px;
+  text-align: center;
+}
+
+.empty-icon {
+  color: var(--muted);
+  margin-bottom: 20px;
+  opacity: 0.5;
+}
+
+.empty-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--foreground);
+  margin: 0 0 8px 0;
+}
+
+.empty-description {
+  font-size: 0.9375rem;
+  color: var(--muted);
+  margin: 0 0 24px 0;
+  max-width: 400px;
+}
+
+.btn-add-first {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+}
+
+/* ============================================
+   Address Form Modal
+   ============================================ */
+.address-form-modal {
+  background: white;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease;
+}
+
+.address-form-modal .modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Radio Group */
+.radio-group {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.radio-label {
+  position: relative;
+  cursor: pointer;
+}
+
+.radio-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.radio-custom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 12px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  transition: all 0.2s;
+  background: white;
+}
+
+.radio-input:checked + .radio-custom {
+  border-color: var(--accent);
+  background: var(--background);
+}
+
+.radio-icon {
+  font-size: 1.5rem;
+}
+
+.radio-text {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+/* Textarea */
+.form-textarea {
+  resize: vertical;
+  min-height: 80px;
+  font-family: var(--font-sans);
+}
+
+/* Checkbox */
+.checkbox-field {
+  margin-top: 8px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.checkbox-input {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.checkbox-text {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+/* ============================================
+   Delete Confirm Modal
+   ============================================ */
+.delete-confirm-modal {
+  background: white;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 500px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease;
+}
+
+.modal-title-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.warning-icon {
+  color: #f59e0b;
+}
+
+.confirm-message {
+  font-size: 0.9375rem;
+  color: var(--foreground);
+  margin: 0 0 16px 0;
+}
+
+.address-preview {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.address-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.address-preview-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.address-preview-body .recipient-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.address-preview-body .recipient-phone {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.address-preview-body .address-text {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.address-preview-body .address-text svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.warning-text {
+  font-size: 0.875rem;
+  color: #ef4444;
+  margin: 0;
+  font-style: italic;
+}
+
+/* Danger Button */
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  background: #ef4444;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.btn-danger:disabled {
+  background: var(--muted);
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ============================================
+   Responsive Styles
+   ============================================ */
+@media (max-width: 1023px) {
+  .addresses-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 767px) {
+  .addresses-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+
+  .addresses-header .btn-primary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .address-card {
+    padding: 16px;
+  }
+
+  .address-card-actions {
+    flex-direction: column;
+  }
+
+  .btn-action {
+    width: 100%;
+  }
+
+  .radio-group {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-footer {
+    flex-direction: column;
+  }
+
+  .modal-footer .btn-primary,
+  .modal-footer .btn-secondary,
+  .modal-footer .btn-danger {
+    width: 100%;
+  }
+}
+
+@media (max-width: 479px) {
+  .empty-addresses {
+    padding: 40px 16px;
+    min-height: 300px;
+  }
+
+  .address-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+
+/* ============================================
+   Focus Visible (A11y)
+   ============================================ */
+.btn-action:focus-visible,
+.btn-add-first:focus-visible,
+.checkbox-input:focus-visible,
+.radio-input:focus-visible + .radio-custom {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ============================================
+   Reduced Motion (A11y)
+   ============================================ */
+@media (prefers-reduced-motion: reduce) {
+  .address-card,
+  .btn-action,
+  .btn-danger,
+  .address-form-modal,
+  .delete-confirm-modal {
+    animation: none;
+    transition: none;
+  }
+
+  .btn-action:hover,
+  .btn-danger:hover {
+    transform: none;
+  }
+}

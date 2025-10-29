@@ -2,6 +2,7 @@ import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
+import { WishlistProvider } from "@/features/wishlist/context";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,9 +31,11 @@ export default function RootLayout({ children }) {
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${playfairDisplay.variable} antialiased bg-zinc-50 text-zinc-800`}
       >
-        <Header />
-        {children}
-        <Footer />
+        <WishlistProvider>
+          <Header />
+          {children}
+          <Footer />
+        </WishlistProvider>
       </body>
     </html>
   );
