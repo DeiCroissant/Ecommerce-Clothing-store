@@ -1,16 +1,21 @@
 'use client';
 
 import { motion, useScroll, useTransform } from 'framer-motion';
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
+import { useIsDesktop } from '@/hooks/useIsDesktop';
 
 /**
- * Scrollytelling Hero Section
- * Parallax effects + content reveal on scroll
+ * Scrollytelling Hero Section with Video Background
+ * Desktop: Video background with parallax
+ * Mobile: Static image fallback
  */
-export default function ScrollytellingHero() {
+export default function ScrollytellingHero({ canPlayVideo = false }) {
   const containerRef = useRef(null);
+  const videoRef = useRef(null);
+  const isDesktop = useIsDesktop();
+  const [videoLoaded, setVideoLoaded] = useState(false);
   
   const { scrollYProgress } = useScroll({
     target: containerRef,
@@ -18,32 +23,71 @@ export default function ScrollytellingHero() {
   });
 
   // Parallax transforms
-  const imageY = useTransform(scrollYProgress, [0, 1], ['0%', '30%']);
   const contentY = useTransform(scrollYProgress, [0, 1], ['0%', '50%']);
   const opacity = useTransform(scrollYProgress, [0, 0.5, 1], [1, 0.8, 0]);
-  const scale = useTransform(scrollYProgress, [0, 1], [1, 1.1]);
+
+  // Handle video playback - only starts when canPlayVideo is true
+  useEffect(() => {
+    if (isDesktop && canPlayVideo && videoRef.current) {
+      // Start playing video after WelcomeScreen is gone
+      videoRef.current.play().catch((error) => {
+        console.log('Video autoplay failed:', error);
+      });
+    }
+  }, [isDesktop, canPlayVideo]);
 
   return (
     <section 
       ref={containerRef}
       className="relative h-screen flex items-center justify-center overflow-hidden"
     >
-      {/* Background Image with Parallax */}
-      <motion.div 
-        className="absolute inset-0 z-0"
-        style={{ y: imageY, scale }}
-      >
-        <div 
-          className="w-full h-full bg-cover bg-center"
-          style={{
-            backgroundImage: 'url(/images/banners/summer-hero.jpg)',
-            backgroundPosition: 'center 40%'
-          }}
-        >
-          {/* Overlay */}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/20 to-black/60" />
+      {/* Video Background (Desktop Only) */}
+      {isDesktop ? (
+        <div className="absolute inset-0 z-0">
+          <video
+            ref={videoRef}
+            loop
+            muted
+            playsInline
+            preload="metadata"
+            onLoadedData={() => setVideoLoaded(true)}
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{
+              opacity: videoLoaded && canPlayVideo ? 1 : 0,
+              transition: 'opacity 1.5s ease-in-out'
+            }}
+          >
+            <source src="/videos/hero-fashion-video.mp4" type="video/mp4" />
+          </video>
+          
+          {/* Fallback poster while video loads or before play */}
+          {(!videoLoaded || !canPlayVideo) && (
+            <div 
+              className="absolute inset-0 w-full h-full bg-cover bg-center"
+              style={{
+                backgroundImage: 'url(/images/banners/summer-hero.jpg)',
+                backgroundPosition: 'center 40%'
+              }}
+            />
+          )}
+          
+          {/* Dark Overlay for text contrast */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/60" />
         </div>
-      </motion.div>
+      ) : (
+        /* Mobile: Static Image Fallback */
+        <div className="absolute inset-0 z-0">
+          <div 
+            className="w-full h-full bg-cover bg-center"
+            style={{
+              backgroundImage: 'url(/images/banners/summer-hero.jpg)',
+              backgroundPosition: 'center 40%'
+            }}
+          >
+            <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/20 to-black/60" />
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <motion.div 

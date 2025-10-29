@@ -24,6 +24,7 @@ const SectionNavigation = dynamic(() => import('@/components/scrollytelling/Sect
 export default function HomePage() {
   const isDesktop = useIsDesktop();
   const [showWelcome, setShowWelcome] = useState(true);
+  const [canPlayVideo, setCanPlayVideo] = useState(false);
 
   // Section navigation configuration
   const sections = [
@@ -33,22 +34,31 @@ export default function HomePage() {
     { id: 'arrivals', label: 'Sản Phẩm Mới' }
   ];
 
+  // Enable video playback after WelcomeScreen disappears
+  const handleWelcomeComplete = () => {
+    setShowWelcome(false);
+    // Delay video start slightly for smooth transition
+    setTimeout(() => {
+      setCanPlayVideo(true);
+    }, 500);
+  };
+
   // Desktop: Scrollytelling Experience
   if (isDesktop) {
     return (
       <>
-        {/* Welcome Screen (3s intro) */}
+        {/* Welcome Screen (scroll to dismiss) */}
         {showWelcome && (
-          <WelcomeScreen onComplete={() => setShowWelcome(false)} />
+          <WelcomeScreen onComplete={handleWelcomeComplete} />
         )}
 
         {/* Section Navigation Dots */}
         <SectionNavigation sections={sections} />
 
         <main className="bg-white">
-          {/* 1. Hero Section with Parallax */}
+          {/* 1. Hero Section with Video Background */}
           <section id="hero">
-            <ScrollytellingHero />
+            <ScrollytellingHero canPlayVideo={canPlayVideo} />
           </section>
 
           {/* 2. Swipeable Gallery */}
