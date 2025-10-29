@@ -48,6 +48,8 @@ export function ReturnCard({ returnItem, onCancel }) {
               src={firstProduct.image} 
               alt={firstProduct.name}
               onError={(e) => {
+                // Guard: prevent infinite loop if placeholder also fails
+                if (e.target.src.includes('placeholder')) return;
                 e.target.src = '/images/placeholders/product.jpg';
               }}
             />

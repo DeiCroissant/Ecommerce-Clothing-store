@@ -47,6 +47,8 @@ export function OrderCard({ order, onReorder }) {
               src={firstItem.image} 
               alt={firstItem.name}
               onError={(e) => {
+                // Guard: prevent infinite loop if placeholder also fails
+                if (e.target.src.includes('placeholder')) return;
                 e.target.src = '/images/placeholders/product.jpg';
               }}
             />

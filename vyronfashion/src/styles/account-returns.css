@@ -95,27 +95,29 @@
 }
 
 .filter-pill {
-  padding: 0.5rem 1rem;
+  padding: 8px 16px;
   background: white;
-  border: 1px solid #e5e5e5;
+  border: 1px solid var(--border);
   border-radius: 20px;
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   font-weight: 500;
   color: #71717a;
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
+  font-family: var(--font-sans);
 }
 
 .filter-pill:hover {
-  border-color: #d4d4d8;
+  border-color: var(--accent);
   background: #f4f4f5;
+  color: var(--accent);
 }
 
 .filter-pill.active {
-  background: var(--pill-color, #18181b);
+  background: var(--accent);
   color: white;
-  border-color: var(--pill-color, #18181b);
+  border-color: var(--accent);
 }
 
 /* ============================================
@@ -254,39 +256,48 @@
 
 .return-card-actions {
   display: flex;
-  gap: 0.75rem;
-  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }
 
-.btn-view-return {
-  padding: 0.5rem 1rem;
-  background: #18181b;
-  color: white;
-  border: none;
+.btn-return-action {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
   border-radius: 8px;
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-}
-
-.btn-view-return:hover {
-  background: #27272a;
-}
-
-.btn-cancel-return {
-  padding: 0.5rem 1rem;
+  border: 1.5px solid var(--border);
   background: white;
-  color: #dc2626;
-  border: 1px solid #dc2626;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
+  color: var(--foreground);
+  text-decoration: none;
+  font-family: var(--font-sans);
 }
 
-.btn-cancel-return:hover {
+.btn-return-action:hover {
+  background: var(--background);
+  border-color: var(--accent);
+}
+
+.btn-return-action.btn-view {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.btn-return-action.btn-view:hover {
+  background: var(--foreground);
+  border-color: var(--foreground);
+}
+
+.btn-return-action.btn-cancel:hover {
+  border-color: #ef4444;
+  color: #ef4444;
   background: #fef2f2;
 }
 
@@ -338,9 +349,9 @@
 .btn-create-return {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  background: #18181b;
+  gap: 8px;
+  padding: 12px 24px;
+  background: var(--accent);
   color: white;
   border: none;
   border-radius: 8px;
@@ -349,10 +360,13 @@
   text-decoration: none;
   cursor: pointer;
   transition: all 0.2s;
+  font-family: var(--font-sans);
 }
 
 .btn-create-return:hover {
-  background: #27272a;
+  background: var(--accent-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(24, 24, 27, 0.2);
 }
 
 /* ============================================
@@ -859,12 +873,14 @@
 }
 
 .btn-primary {
-  background: #18181b;
+  background: var(--accent);
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #27272a;
+  background: var(--accent-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(24, 24, 27, 0.2);
 }
 
 .btn-primary:disabled {
@@ -874,13 +890,14 @@
 
 .btn-secondary {
   background: white;
-  color: #18181b;
-  border: 1px solid #e5e5e5;
+  color: var(--accent);
+  border: 1px solid var(--border);
 }
 
 .btn-secondary:hover:not(:disabled) {
   background: #fafafa;
-  border-color: #d4d4d8;
+  border-color: var(--accent);
+  color: var(--accent-hover);
 }
 
 .btn-secondary:disabled {
@@ -896,6 +913,8 @@
 
 .btn-danger:hover:not(:disabled) {
   background: #fef2f2;
+  border-color: #b91c1c;
+  color: #b91c1c;
 }
 
 /* ============================================
