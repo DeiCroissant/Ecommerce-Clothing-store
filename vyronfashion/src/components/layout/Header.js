@@ -114,7 +114,11 @@ export default function Header() {
           {/* User Actions */}
           <div className="flex items-center gap-4">
             {/* User Icon */}
-            <Link href="/auth/login" className="text-zinc-700 hover:text-zinc-900 transition-colors">
+            <Link 
+              href="/account/overview" 
+              className="text-zinc-700 hover:text-zinc-900 transition-colors"
+              title="Tài khoản của tôi"
+            >
               <UserIcon className="w-6 h-6" />
             </Link>
 
@@ -123,6 +127,7 @@ export default function Header() {
               href="/cart" 
               className="relative text-zinc-700 hover:text-zinc-900 transition-colors"
               data-cart-icon
+              title="Giỏ hàng"
             >
               <ShoppingCartIcon className="w-6 h-6" />
               <span className="absolute -top-2 -right-2 bg-zinc-900 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-semibold">

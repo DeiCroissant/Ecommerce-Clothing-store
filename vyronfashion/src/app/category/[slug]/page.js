@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, useMemo, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import FilterSidebar from '@/components/category/FilterSidebar';
 import ProductToolbar from '@/components/category/ProductToolbar';
@@ -85,13 +85,20 @@ export default function CategoryPage({ params }) {
     fetchProducts();
   }, [activeFilters, currentSort, currentPage, slug]);
 
-  // Sticky toolbar detection
+  // Sticky toolbar detection - Optimized to prevent unnecessary re-renders
   useEffect(() => {
     const handleScroll = () => {
-      setIsToolbarSticky(window.scrollY > 200);
+      const shouldBeSticky = window.scrollY > 200;
+      // Only update state if the value actually changes
+      setIsToolbarSticky(prev => {
+        if (prev !== shouldBeSticky) {
+          return shouldBeSticky;
+        }
+        return prev;
+      });
     };
 
-    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
@@ -135,8 +142,8 @@ export default function CategoryPage({ params }) {
     router.push(`/category/${slug}?${params.toString()}`, { scroll: false });
   };
 
-  // Filter handlers
-  const handleFilterChange = (filterType, value) => {
+  // Filter handlers - Memoized to prevent unnecessary re-renders
+  const handleFilterChange = useCallback((filterType, value) => {
     const newFilters = {
       ...activeFilters,
       [filterType]: value
@@ -144,7 +151,7 @@ export default function CategoryPage({ params }) {
     setActiveFilters(newFilters);
     setCurrentPage(1); // Reset to page 1
     updateURL(newFilters, currentSort, 1);
-  };
+  }, [activeFilters, currentSort, slug]);
 
   const handleRemoveFilter = (filterType, value) => {
     if (filterType === 'priceRange') {

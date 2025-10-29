@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   XMarkIcon, 
@@ -12,8 +12,11 @@ import {
 /**
  * FilterSidebar Component
  * Faceted filtering với multi-select, search trong facet, facet counts
+ * 
+ * @note Wrapped with React.memo to prevent unnecessary re-renders
+ * when parent component re-renders (e.g., during scroll events)
  */
-export default function FilterSidebar({ 
+function FilterSidebar({ 
   filters, 
   activeFilters, 
   onFilterChange,
@@ -424,3 +427,15 @@ export default function FilterSidebar({
     </>
   );
 }
+
+// Custom comparison function for React.memo
+// Only re-render if filters, activeFilters, or isOpen actually change
+function arePropsEqual(prevProps, nextProps) {
+  return (
+    prevProps.filters === nextProps.filters &&
+    JSON.stringify(prevProps.activeFilters) === JSON.stringify(nextProps.activeFilters) &&
+    prevProps.isOpen === nextProps.isOpen
+  );
+}
+
+export default memo(FilterSidebar, arePropsEqual);

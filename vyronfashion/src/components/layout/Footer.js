@@ -2,15 +2,15 @@ import Link from 'next/link';
 
 export default function Footer() {
   return (
-    <footer className="bg-gray-900 text-gray-300">
+    <footer className="bg-gray-900 text-gray-300 font-sans">
       <div className="container mx-auto px-4 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 items-start">
           {/* Company Info */}
           <div>
-            <h3 className="text-white text-lg font-bold mb-4">
+            <h3 className="text-white text-lg font-bold mb-4 tracking-tight">
               VYRON<span className="text-blue-500">FASHION</span>
             </h3>
-            <p className="text-sm mb-4">
+            <p className="text-sm mb-4 leading-relaxed">
               Mang đến phong cách thời trang hiện đại, chất lượng cao với giá cả hợp lý.
             </p>
             <div className="flex gap-4">
@@ -34,8 +34,8 @@ export default function Footer() {
 
           {/* Quick Links */}
           <div>
-            <h4 className="text-white font-semibold mb-4">Liên Kết</h4>
-            <ul className="space-y-2">
+            <h4 className="text-white text-base font-semibold mb-4 tracking-tight">Liên Kết</h4>
+            <ul className="space-y-2 text-sm">
               <li><Link href="/about" className="hover:text-blue-500 transition-colors">Giới Thiệu</Link></li>
               <li><Link href="/products" className="hover:text-blue-500 transition-colors">Sản Phẩm</Link></li>
               <li><Link href="/blog" className="hover:text-blue-500 transition-colors">Blog</Link></li>
@@ -45,8 +45,8 @@ export default function Footer() {
 
           {/* Support */}
           <div>
-            <h4 className="text-white font-semibold mb-4">Hỗ Trợ</h4>
-            <ul className="space-y-2">
+            <h4 className="text-white text-base font-semibold mb-4 tracking-tight">Hỗ Trợ</h4>
+            <ul className="space-y-2 text-sm">
               <li><Link href="/help" className="hover:text-blue-500 transition-colors">Trung Tâm Trợ Giúp</Link></li>
               <li><Link href="/shipping" className="hover:text-blue-500 transition-colors">Chính Sách Vận Chuyển</Link></li>
               <li><Link href="/returns" className="hover:text-blue-500 transition-colors">Đổi Trả Hàng</Link></li>
@@ -56,8 +56,8 @@ export default function Footer() {
 
           {/* Contact */}
           <div>
-            <h4 className="text-white font-semibold mb-4">Liên Hệ</h4>
-            <ul className="space-y-2 text-sm">
+            <h4 className="text-white text-base font-semibold mb-4 tracking-tight">Liên Hệ</h4>
+            <ul className="space-y-2 text-sm leading-relaxed">
               <li>📍 123 Đường ABC, Quận 1, TP.HCM</li>
               <li>📞 Hotline: 1900 1234</li>
               <li>✉️ Email: support@vyronfashion.com</li>
@@ -67,7 +67,7 @@ export default function Footer() {
         </div>
 
         <div className="border-t border-gray-800 mt-8 pt-8 text-center text-sm">
-          <p>&copy; 2025 VyronFashion. All rights reserved.</p>
+          <p className="font-sans">&copy; 2025 VyronFashion. All rights reserved.</p>
         </div>
       </div>
     </footer>
