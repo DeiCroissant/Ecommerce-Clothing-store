@@ -1,8 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ShoppingCartIcon, UserIcon, MagnifyingGlassIcon, Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
+import { useRouter } from 'next/navigation';
+import AuthModal from '../ui/AuthModal';
+import { ArrowRightOnRectangleIcon, UserCircleIcon } from '@heroicons/react/24/outline';
 
 const categories = [
   {
@@ -27,9 +30,73 @@ const categories = [
   }
 ];
 
+function AccountDropdown({ user, onLogout, onAccountOverview, open, onClose }) {
+  const dropdownRef = useRef();
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        onClose && onClose();
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open, onClose]);
+
+  if (!open) return null;
+  return (
+    <>
+      <div className="fixed inset-0 z-[49] bg-black/5" onClick={onClose}></div>
+      <div ref={dropdownRef} className="animate-dropdown-scale absolute top-full right-0 mt-3 w-[280px] min-w-[220px] rounded-2xl border border-zinc-200 shadow-2xl bg-white z-[51] px-5 py-5">
+        <div className="flex flex-col items-center mb-4">
+          <UserCircleIcon className="w-10 h-10 text-zinc-400 mb-2"/>
+          <div className="font-bold text-zinc-900 text-base leading-tight text-center">{user?.name || user?.username}</div>
+          <div className="text-xs text-zinc-500 text-center truncate w-full">{user?.email}</div>
+          <div className="mt-1 px-2 py-0.5 rounded bg-zinc-100 text-xs text-zinc-400 font-semibold tracking-wider mb-1 select-none">
+            {user?.role?.toUpperCase()||'USER'}
+          </div>
+        </div>
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={onAccountOverview}
+            className="w-full flex items-center gap-2 p-2 rounded-xl border border-zinc-200 hover:bg-zinc-50 hover:border-zinc-900 font-medium text-sm text-zinc-800 transition-colors"
+          >
+            <UserCircleIcon className="w-5 h-5 text-zinc-400"/>
+            Xem tài khoản
+            <span className="ml-auto"><ArrowRightOnRectangleIcon className="w-4 h-4 text-zinc-400"/></span>
+          </button>
+          <button
+            onClick={onLogout}
+            className="w-full flex items-center gap-2 p-2 rounded-xl text-sm text-red-600 font-semibold hover:bg-red-50 transition-colors"
+          >
+            <ArrowRightOnRectangleIcon className="w-5 h-5 text-red-400"/>
+            Đăng xuất
+          </button>
+        </div>
+      </div>
+      <style jsx>{`
+        .animate-dropdown-scale {animation:scalein .18s cubic-bezier(.71,1.8,.77,1.24);}
+        @keyframes scalein {from {transform:scale(.9); opacity:0;} to {transform:scale(1); opacity:1;}}
+      `}</style>
+    </>
+  );
+}
+
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showAuth, setShowAuth] = useState(false);
+  const [user, setUser] = useState(null);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const userLS = localStorage.getItem('user');
+      setUser(userLS ? JSON.parse(userLS) : null);
+    }
+  }, []);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -37,6 +104,14 @@ export default function Header() {
       // Redirect to search page with query
       window.location.href = `/products?search=${encodeURIComponent(searchQuery)}`;
     }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    setShowDropdown(false);
+    setUser(null);
+    setTimeout(() => setShowAuth(false), 200);
+    // Optionally reload window or trigger a state update in a context.
   };
 
   return (
@@ -112,15 +187,28 @@ export default function Header() {
           </form>
 
           {/* User Actions */}
-          <div className="flex items-center gap-4">
-            {/* User Icon */}
-            <Link 
-              href="/account/overview" 
+          <div className="flex items-center gap-4 relative">
+            {/* User Icon - modal/dropdown */}
+            <button
               className="text-zinc-700 hover:text-zinc-900 transition-colors"
-              title="Tài khoản của tôi"
+              title={user ? 'Tài khoản' : 'Đăng nhập / Đăng ký'}
+              onClick={() => {
+                if (user) setShowDropdown((v) => !v);
+                else setShowAuth(true);
+              }}
+              type="button"
             >
               <UserIcon className="w-6 h-6" />
-            </Link>
+            </button>
+            <AccountDropdown
+              user={user}
+              open={showDropdown}
+              onClose={() => setShowDropdown(false)}
+              onAccountOverview={() => {
+                setShowDropdown(false); router.push('/account/overview');
+              }}
+              onLogout={handleLogout}
+            />
 
             {/* Cart Icon with Badge */}
             <Link 
@@ -199,6 +287,21 @@ export default function Header() {
           </nav>
         </div>
       )}
+
+      {/* Auth Modal */}
+      <AuthModal
+        open={showAuth}
+        onClose={() => setShowAuth(false)}
+        onSuccess={() => {
+          setShowAuth(false);
+          router.push('/');
+          if (typeof window !== 'undefined') {
+            const userLS = localStorage.getItem('user');
+            setUser(userLS ? JSON.parse(userLS) : null);
+            setShowDropdown(false);
+          }
+        }}
+      />
     </header>
   );
 }
