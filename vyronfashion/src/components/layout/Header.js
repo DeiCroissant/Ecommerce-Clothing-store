@@ -30,6 +30,7 @@ const categories = [
   }
 ];
 
+function AccountDropdown({ user, onLogout, onAccountOverview, onAdmin, open, onClose }) {
 function AccountDropdown({ user, onLogout, onAccountOverview, open, onClose }) {
   const dropdownRef = useRef();
 
@@ -66,6 +67,16 @@ function AccountDropdown({ user, onLogout, onAccountOverview, open, onClose }) {
             Xem tài khoản
             <span className="ml-auto"><ArrowRightOnRectangleIcon className="w-4 h-4 text-zinc-400"/></span>
           </button>
+          {user?.role?.toLowerCase() === 'admin' && (
+            <button
+              onClick={onAdmin}
+              className="w-full flex items-center gap-2 p-2 rounded-xl border border-zinc-200 hover:bg-zinc-50 hover:border-zinc-900 font-semibold text-sm text-zinc-800 transition-colors"
+            >
+              <UserCircleIcon className="w-5 h-5 text-zinc-500"/>
+              Quản trị viên
+              <span className="ml-auto"><ArrowRightOnRectangleIcon className="w-4 h-4 text-zinc-400"/></span>
+            </button>
+          )}
           <button
             onClick={onLogout}
             className="w-full flex items-center gap-2 p-2 rounded-xl text-sm text-red-600 font-semibold hover:bg-red-50 transition-colors"
@@ -89,6 +100,8 @@ export default function Header() {
   const [showAuth, setShowAuth] = useState(false);
   const [user, setUser] = useState(null);
   const [showDropdown, setShowDropdown] = useState(false);
+  // Simple toast state
+  const [toast, setToast] = useState({ visible: false, message: '', kind: 'success' });
   const router = useRouter();
 
   useEffect(() => {
@@ -111,6 +124,11 @@ export default function Header() {
     setShowDropdown(false);
     setUser(null);
     setTimeout(() => setShowAuth(false), 200);
+    // Toast: logout (danger style)
+    setToast({ visible: true, message: 'Đăng xuất thành công', kind: 'danger' });
+    setTimeout(() => setToast(t => ({ ...t, visible: false })), 2000);
+    // Redirect to homepage after logout
+    router.push('/');
     // Optionally reload window or trigger a state update in a context.
   };
 
@@ -207,6 +225,9 @@ export default function Header() {
               onAccountOverview={() => {
                 setShowDropdown(false); router.push('/account/overview');
               }}
+              onAdmin={() => {
+                setShowDropdown(false); router.push('/admin');
+              }}
               onLogout={handleLogout}
             />
 
@@ -288,6 +309,13 @@ export default function Header() {
         </div>
       )}
 
+      {/* Toast */}
+      {toast.visible && (
+        <div className={`fixed top-4 right-4 z-[1001] px-4 py-3 rounded-xl shadow-xl border text-sm font-semibold ${toast.kind==='success' ? 'bg-green-50 text-green-800 border-green-200' : toast.kind==='danger' ? 'bg-red-50 text-red-800 border-red-200' : 'bg-zinc-50 text-zinc-800 border-zinc-200'}`}>
+          {toast.message}
+        </div>
+      )}
+
       {/* Auth Modal */}
       <AuthModal
         open={showAuth}
@@ -300,6 +328,9 @@ export default function Header() {
             setUser(userLS ? JSON.parse(userLS) : null);
             setShowDropdown(false);
           }
+          // Toast: login success
+          setToast({ visible: true, message: 'Đăng nhập thành công', kind: 'success' });
+          setTimeout(() => setToast(t => ({ ...t, visible: false })), 2000);
         }}
       />
     </header>

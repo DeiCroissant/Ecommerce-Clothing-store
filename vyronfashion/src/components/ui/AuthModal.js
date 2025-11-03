@@ -205,6 +205,43 @@ export default function AuthModal({ open, onClose, onSuccess }) {
           return;
         }
         
+        // Hiển thị thông báo thành công
+        setMessage('Xác minh email thành công!');
+        setSuccess(true);
+
+        // Nếu có mật khẩu tạm thời lưu sau khi đăng ký, tự động đăng nhập
+        const tempPassword = pendingVerification?.password;
+        if (tempPassword) {
+          try {
+            const loginRes = await fetch('http://localhost:8000/api/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ username, password: tempPassword })
+            });
+            const loginJson = await loginRes.json();
+            if (loginRes.ok && loginJson?.success && loginJson?.user) {
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('user', JSON.stringify(loginJson.user));
+              }
+              onSuccess?.();
+              return;
+            }
+          } catch (_) {
+            // fall back to manual login
+          }
+        }
+
+        // Nếu không thể tự đăng nhập, chuyển về tab đăng nhập với username đã điền sẵn
+        setMode('login');
+        setPendingVerification(null);
+        if (loginRefs.username.current) {
+          loginRefs.username.current.value = username;
+        }
+        loginValues.current.username = username;
+        if (verifyCodeRef.current) verifyCodeRef.current.value = '';
+        verifyValue.current = '';
+        setMessage('Tài khoản đã được xác minh. Vui lòng đăng nhập.');
+        setSuccess(true);
         // Xác minh thành công → Hiển thị thông báo ngắn gọn
         setMessage('Xác minh tài khoản thành công!');
         setSuccess(true);
@@ -324,12 +361,14 @@ export default function AuthModal({ open, onClose, onSuccess }) {
       }
 
       if (isLogin) {
+        // Lưu user để Header đọc và cập nhật UI
         // Lưu user vào localStorage
         if (typeof window !== 'undefined' && data.user) {
           localStorage.setItem('user', JSON.stringify(data.user));
         }
         setMessage('Đăng nhập thành công!');
         setSuccess(true);
+        onSuccess?.();
         setTimeout(() => {
           onSuccess?.();
         }, 500);
@@ -337,6 +376,7 @@ export default function AuthModal({ open, onClose, onSuccess }) {
         const pending = {
           username: registerValues.current.username,
           email: registerValues.current.email,
+          password: registerValues.current.password,
           password: registerValues.current.password, // Lưu password để auto login sau verify
           code: data.verificationCode,
           emailSent: data.emailSent,
