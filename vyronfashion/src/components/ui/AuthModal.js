@@ -242,6 +242,72 @@ export default function AuthModal({ open, onClose, onSuccess }) {
         verifyValue.current = '';
         setMessage('Tài khoản đã được xác minh. Vui lòng đăng nhập.');
         setSuccess(true);
+        // Xác minh thành công → Hiển thị thông báo ngắn gọn
+        setMessage('Xác minh tài khoản thành công!');
+        setSuccess(true);
+        
+        // Tự động đăng nhập bằng cách gọi API login với thông tin đã lưu
+        setTimeout(async () => {
+          try {
+            // Lấy password từ pending verification (nếu có)
+            const password = pendingVerification?.password || '';
+            
+            if (!password) {
+              // Nếu không có password, chuyển về login
+              setMode('login');
+              setPendingVerification(null);
+              if (loginRefs.username.current) {
+                loginRefs.username.current.value = username;
+              }
+              loginValues.current.username = username;
+              setMessage('Tài khoản đã được xác minh. Vui lòng đăng nhập.');
+              setSuccess(true);
+              return;
+            }
+            
+            // Auto login
+            const loginResponse = await fetch('http://localhost:8000/api/auth/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ username, password, turnstile })
+            });
+            
+            const loginData = await loginResponse.json();
+            
+            if (loginResponse.ok && loginData.success && loginData.user) {
+              // Lưu user vào localStorage
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('user', JSON.stringify(loginData.user));
+              }
+              // Giữ thông báo xác minh thành công, không cần thêm "đang đăng nhập"
+              setMessage('Xác minh tài khoản thành công!');
+              setSuccess(true);
+              setTimeout(() => {
+                onSuccess?.();
+              }, 500);
+            } else {
+              // Login failed, chuyển về tab login
+              setMode('login');
+              setPendingVerification(null);
+              if (loginRefs.username.current) {
+                loginRefs.username.current.value = username;
+              }
+              loginValues.current.username = username;
+              setMessage('Tài khoản đã được xác minh. Vui lòng đăng nhập.');
+              setSuccess(true);
+            }
+          } catch (err) {
+            // Error, chuyển về tab login
+            setMode('login');
+            setPendingVerification(null);
+            if (loginRefs.username.current) {
+              loginRefs.username.current.value = username;
+            }
+            loginValues.current.username = username;
+            setMessage('Tài khoản đã được xác minh. Vui lòng đăng nhập.');
+            setSuccess(true);
+          }
+        }, 1500);
       } catch (err) {
         setMessage('Lỗi kết nối server khi xác minh');
         setSuccess(false);
@@ -296,17 +362,22 @@ export default function AuthModal({ open, onClose, onSuccess }) {
 
       if (isLogin) {
         // Lưu user để Header đọc và cập nhật UI
+        // Lưu user vào localStorage
         if (typeof window !== 'undefined' && data.user) {
           localStorage.setItem('user', JSON.stringify(data.user));
         }
         setMessage('Đăng nhập thành công!');
         setSuccess(true);
         onSuccess?.();
+        setTimeout(() => {
+          onSuccess?.();
+        }, 500);
       } else {
         const pending = {
           username: registerValues.current.username,
           email: registerValues.current.email,
           password: registerValues.current.password,
+          password: registerValues.current.password, // Lưu password để auto login sau verify
           code: data.verificationCode,
           emailSent: data.emailSent,
         };

@@ -31,6 +31,7 @@ const categories = [
 ];
 
 function AccountDropdown({ user, onLogout, onAccountOverview, onAdmin, open, onClose }) {
+function AccountDropdown({ user, onLogout, onAccountOverview, open, onClose }) {
   const dropdownRef = useRef();
 
   useEffect(() => {
@@ -128,6 +129,7 @@ export default function Header() {
     setTimeout(() => setToast(t => ({ ...t, visible: false })), 2000);
     // Redirect to homepage after logout
     router.push('/');
+    // Optionally reload window or trigger a state update in a context.
   };
 
   return (
