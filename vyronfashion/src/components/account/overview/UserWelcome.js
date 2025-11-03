@@ -8,13 +8,31 @@ import { format } from 'date-fns'
 import { vi } from 'date-fns/locale'
 
 export function UserWelcome({ user }) {
+  // Tính toán profile completeness dựa trên dữ liệu thật
+  const calculateProfileCompleteness = (user) => {
+    const fields = [
+      user.name,
+      user.email,
+      user.emailVerified,
+      user.phone,
+      user.avatar,
+      user.dateOfBirth,
+      user.address,
+    ]
+    
+    const completed = fields.filter(Boolean).length
+    return Math.round((completed / fields.length) * 100)
+  }
+
+  const profileCompleteness = calculateProfileCompleteness(user)
+
   return (
     <div className="user-welcome-card">
       <div className="welcome-content">
         <div className="avatar-section">
           <Image
-            src={user.avatar}
-            alt={`${user.firstName} ${user.lastName}`}
+            src={user.avatar || '/images/placeholders/avatar-placeholder.jpg'}
+            alt={user.name}
             width={80}
             height={80}
             className="avatar"
@@ -23,7 +41,7 @@ export function UserWelcome({ user }) {
 
         <div className="user-info">
           <h2 className="user-name">
-            {user.firstName} {user.lastName}
+            {user.name}
           </h2>
           
           <div className="email-status">
@@ -41,32 +59,50 @@ export function UserWelcome({ user }) {
             )}
           </div>
 
+          {/* Thông tin bổ sung từ API */}
+          <div className="user-details">
+            {user.phone && (
+              <div className="detail-item">
+                <span className="label">Số điện thoại:</span>
+                <span className="value">{user.phone}</span>
+              </div>
+            )}
+            {user.address && (
+              <div className="detail-item">
+                <span className="label">Địa chỉ:</span>
+                <span className="value">{user.address}</span>
+              </div>
+            )}
+            <div className="detail-item">
+              <span className="label">Cấp thành viên:</span>
+              <span className="value capitalize">{user.memberLevel || 'Bronze'}</span>
+            </div>
+            <div className="detail-item">
+              <span className="label">Vai trò:</span>
+              <span className="value capitalize">{user.role || 'User'}</span>
+            </div>
+          </div>
+
           <div className="user-stats">
-            <div className="stat">
-              <Award size={16} className="stat-icon" />
-              <div>
-                <span className="label">Điểm tích lũy</span>
-                <span className="value">{user.points.toLocaleString('vi-VN')}</span>
-              </div>
-            </div>
-            <div className="stat">
-              <div>
-                <span className="label">Đơn hàng</span>
-                <span className="value">{user.totalOrders}</span>
-              </div>
-            </div>
             <div className="stat">
               <Calendar size={16} className="stat-icon" />
               <div>
                 <span className="label">Thành viên từ</span>
                 <span className="value">
-                  {format(new Date(user.memberSince), 'dd/MM/yyyy', { locale: vi })}
+                  {format(new Date(user.createdAt), 'dd/MM/yyyy', { locale: vi })}
                 </span>
+              </div>
+            </div>
+            <div className="stat">
+              <Award size={16} className="stat-icon" />
+              <div>
+                <span className="label">Cấp độ</span>
+                <span className="value capitalize">{user.memberLevel || 'Bronze'}</span>
               </div>
             </div>
           </div>
 
-          <ProfileCompleteness percentage={user.profileCompleteness} />
+          <ProfileCompleteness percentage={profileCompleteness} />
 
           <Link href="/account/profile" className="edit-profile-btn">
             Chỉnh sửa hồ sơ

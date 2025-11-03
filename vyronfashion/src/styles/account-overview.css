@@ -94,6 +94,42 @@
   color: #fecaca;
 }
 
+/* User Details */
+.user-details {
+  margin: 16px 0;
+  padding: 16px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.detail-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 0.875rem;
+}
+
+.detail-item:last-child {
+  margin-bottom: 0;
+}
+
+.detail-item .label {
+  font-weight: 600;
+  opacity: 0.8;
+  min-width: 120px;
+  flex-shrink: 0;
+}
+
+.detail-item .value {
+  opacity: 0.9;
+  flex: 1;
+}
+
+.detail-item .value.capitalize {
+  text-transform: capitalize;
+}
+
 /* User Stats */
 .user-stats {
   display: flex;
