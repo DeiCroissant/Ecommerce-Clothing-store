@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, use } from 'react';
 import ProductGallery from '@/components/product/ProductGallery';
 import ProductInfo from '@/components/product/ProductInfo';
 import VariantSelector from '@/components/product/VariantSelector';
@@ -10,91 +10,20 @@ import FlyToCart from '@/components/product/FlyToCart';
 import Confetti from '@/components/product/Confetti';
 import MiniCartSlideIn from '@/components/product/MiniCartSlideIn';
 import { getProductImages } from '@/lib/mockImages';
+import * as productAPI from '@/lib/api/products';
+import * as reviewAPI from '@/lib/api/reviews';
+import * as cartAPI from '@/lib/api/cart';
+import ProductReviews from '@/components/product/ProductReviews';
 
 // Mock data - sẽ thay thế bằng API call sau
-const MOCK_PRODUCT = {
-  id: '1',
-  slug: 'ao-thun-basic-cotton-nam',
-  name: 'Áo Thun Basic Cotton Nam Cao Cấp',
-  brand: {
-    name: 'VYRON',
-    slug: 'vyron'
-  },
-  sku: 'VRN-AT-001',
-  category: {
-    name: 'Áo Nam',
-    slug: 'ao-nam'
-  },
-  pricing: {
-    original: 499000,
-    sale: 349000,
-    discount_percent: 30,
-    currency: 'VND'
-  },
-  rating: {
-    average: 4.5,
-    count: 128
-  },
-  short_description: 'Áo thun nam basic với chất liệu cotton 100% thoáng mát, form dáng regular fit thoải mái. Thiết kế tối giản, dễ phối đồ, phù hợp cho mọi hoàn cảnh.',
-  badges: [
-    { text: 'Miễn phí vận chuyển', icon: '🚚' },
-    { text: 'Cotton 100%', icon: '🌿' },
-    { text: 'Best Seller', icon: '⭐' }
-  ],
-  variants: {
-    colors: [
-      { name: 'Đen', slug: 'black', hex: '#000000', available: true },
-      { name: 'Trắng', slug: 'white', hex: '#FFFFFF', available: true },
-      { name: 'Xám', slug: 'gray', hex: '#6B7280', available: true },
-      { name: 'Navy', slug: 'navy', hex: '#1E3A8A', available: true },
-      { name: 'Olive', slug: 'olive', hex: '#84A98C', available: false }
-    ],
-    sizes: [
-      { name: 'S', available: true, stock: 15 },
-      { name: 'M', available: true, stock: 28 },
-      { name: 'L', available: true, stock: 32 },
-      { name: 'XL', available: true, stock: 4 },
-      { name: '2XL', available: false, stock: 0 }
-    ]
-  },
-  inventory: {
-    in_stock: true,
-    quantity: 79,
-    low_stock_threshold: 10
-  },
-  attributes: {
-    material: '100% Cotton, 220gsm',
-    origin: 'Việt Nam',
-    features: [
-      'Vải cotton mềm mại, thấm hút mồ hôi tốt',
-      'Form regular fit thoải mái',
-      'Đường may chắc chắn, tỉ mỉ',
-      'Không xù lông sau nhiều lần giặt',
-      'Màu sắc bền đẹp theo thời gian'
-    ],
-    care: [
-      'Giặt máy ở nhiệt độ thường (30°C)',
-      'Không sử dụng chất tẩy',
-      'Ủi ở nhiệt độ trung bình',
-      'Có thể giặt khô',
-      'Phơi trong bóng mát'
-    ]
-  },
-  policies: {
-    return_days: 30,
-    warranty: '12 tháng đổi mới nếu có lỗi từ nhà sản xuất',
-    shipping: 'Giao hàng toàn quốc, nhận hàng trong 2-3 ngày'
-  },
-  size_chart: [
-    { size: 'S', shoulder: '42', chest: '90', waist: '86', length: '66' },
-    { size: 'M', shoulder: '44', chest: '94', waist: '90', length: '68' },
-    { size: 'L', shoulder: '46', chest: '98', waist: '94', length: '70' },
-    { size: 'XL', shoulder: '48', chest: '102', waist: '98', length: '72' },
-    { size: '2XL', shoulder: '50', chest: '106', waist: '102', length: '74' }
-  ]
-};
-
 export default function ProductDetailPage({ params }) {
+  const resolvedParams = use(params);
+  const { slug } = resolvedParams;
+  
+  const [product, setProduct] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
   const [selectedVariant, setSelectedVariant] = useState({
     color: null,
     size: null
@@ -108,50 +37,180 @@ export default function ProductDetailPage({ params }) {
   const [cartItems, setCartItems] = useState([]);
   const addToCartButtonRef = useRef(null);
 
-  // Get images from mock data
-  const productImages = getProductImages(MOCK_PRODUCT.slug);
+  // Get current user ID
+  const getCurrentUserId = () => {
+    if (typeof window !== 'undefined') {
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr);
+          return user.id || user._id;
+        } catch (e) {
+          return null;
+        }
+      }
+    }
+    return null;
+  };
+
+  // Load cart on mount
+  useEffect(() => {
+    const loadCart = async () => {
+      const userId = getCurrentUserId();
+      if (userId) {
+        try {
+          const cartData = await cartAPI.getCart(userId);
+          setCartItems(cartData.items || []);
+        } catch (error) {
+          console.error('Error loading cart:', error);
+        }
+      }
+    };
+    loadCart();
+  }, []);
+
+  // Load product từ API
+  useEffect(() => {
+    const loadProduct = async () => {
+      setLoading(true);
+      setReviewsLoading(true);
+      try {
+        // Tìm product theo slug
+        const foundProduct = await productAPI.getProductBySlug(slug);
+        
+        if (foundProduct) {
+          // Ensure variants structure is correct
+          if (!foundProduct.variants) {
+            foundProduct.variants = { colors: [], sizes: [] };
+          }
+          if (!foundProduct.variants.colors) {
+            foundProduct.variants.colors = [];
+          }
+          if (!foundProduct.variants.sizes) {
+            foundProduct.variants.sizes = [];
+          }
+          
+          // Debug: Log variants để kiểm tra
+          console.log('Product loaded - variants:', foundProduct.variants);
+          console.log('Product loaded - sizes:', foundProduct.variants.sizes);
+          
+          setProduct(foundProduct);
+          
+          // Load reviews
+          try {
+            const reviewsData = await reviewAPI.getProductReviews(foundProduct.id);
+            setReviews(reviewsData.reviews || []);
+            
+            // Cập nhật rating từ reviews
+            if (reviewsData.average_rating) {
+              setProduct(prev => ({
+                ...prev,
+                rating: {
+                  average: reviewsData.average_rating,
+                  count: reviewsData.total
+                }
+              }))
+            }
+          } catch (reviewError) {
+            console.error('Error loading reviews:', reviewError);
+            setReviews([]);
+          } finally {
+            setReviewsLoading(false);
+          }
+        } else {
+          console.log('Product not found for slug:', slug);
+          setProduct(null);
+        }
+      } catch (error) {
+        console.error('Error loading product:', error);
+        setProduct(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadProduct();
+  }, [slug]);
+
+  // Get images from product
+  // Combine main image and gallery images
+  const productImages = product 
+    ? (() => {
+        const images = [];
+        // Add main image first
+        if (product.image) {
+          images.push({ url: product.image, alt: product.name });
+        }
+        // Add gallery images
+        if (product.images && product.images.length > 0) {
+          product.images.forEach(img => {
+            // Only add if not duplicate of main image
+            if (img !== product.image) {
+              images.push({ url: img, alt: `${product.name} - Gallery` });
+            }
+          });
+        }
+        // Fallback to mock images if no images at all
+        if (images.length === 0) {
+          return getProductImages(slug);
+        }
+        return images;
+      })()
+    : [];
 
   const handleVariantChange = (variant) => {
     setSelectedVariant(variant);
   };
 
-  const handleAddToCart = (quantity) => {
+  const handleAddToCart = async (quantity) => {
     if (!selectedVariant.color || !selectedVariant.size) {
       alert('Vui lòng chọn màu sắc và kích cỡ');
       return;
     }
 
-    // Get button position for animations
-    if (addToCartButtonRef.current) {
-      const buttonRect = addToCartButtonRef.current.getBoundingClientRect();
-      const startX = buttonRect.left + buttonRect.width / 2;
-      const startY = buttonRect.top + buttonRect.height / 2;
-      
-      setFlyToCartPosition({ x: startX, y: startY });
-      setConfettiOrigin({ x: startX, y: startY });
+    const userId = getCurrentUserId();
+    if (!userId) {
+      alert('Vui lòng đăng nhập để thêm vào giỏ hàng');
+      return;
     }
 
-    // Add to cart items (mock)
-    const newItem = {
-      name: MOCK_PRODUCT.name,
-      image: productImages[0].url,
-      price: MOCK_PRODUCT.pricing.sale,
-      color: MOCK_PRODUCT.variants.colors.find(c => c.slug === selectedVariant.color)?.name,
-      size: selectedVariant.size,
-      quantity: quantity,
-    };
-    
-    setCartItems(prev => [...prev, newItem]);
+    try {
+      // Get button position for animations
+      if (addToCartButtonRef.current) {
+        const buttonRect = addToCartButtonRef.current.getBoundingClientRect();
+        const startX = buttonRect.left + buttonRect.width / 2;
+        const startY = buttonRect.top + buttonRect.height / 2;
+        
+        setFlyToCartPosition({ x: startX, y: startY });
+        setConfettiOrigin({ x: startX, y: startY });
+      }
 
-    // Trigger animations
-    setFlyToCartActive(true);
-    setConfettiActive(true);
+      // Add to cart via API
+      await cartAPI.addToCart(
+        userId,
+        product.id,
+        selectedVariant.color,
+        selectedVariant.size,
+        quantity
+      );
 
-    console.log('Add to cart:', {
-      product: MOCK_PRODUCT.name,
-      variant: selectedVariant,
-      quantity
-    });
+      // Reload cart
+      const cartData = await cartAPI.getCart(userId);
+      setCartItems(cartData.items || []);
+
+      // Trigger animations
+      setFlyToCartActive(true);
+      setConfettiActive(true);
+
+      console.log('Add to cart:', {
+        product: product.name,
+        variant: selectedVariant,
+        quantity
+      });
+    } catch (error) {
+      console.error('Error adding to cart:', error);
+      alert(error.message || 'Không thể thêm vào giỏ hàng');
+    }
   };
 
   const handleFlyToCartComplete = () => {
@@ -177,7 +236,7 @@ export default function ProductDetailPage({ params }) {
     }
 
     console.log('Buy now:', {
-      product: MOCK_PRODUCT.name,
+      product: product?.name,
       variant: selectedVariant,
       quantity
     });
@@ -186,6 +245,56 @@ export default function ProductDetailPage({ params }) {
     // router.push('/checkout');
     alert('Chuyển đến trang thanh toán...');
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
+          <p className="text-gray-600">Đang tải sản phẩm...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!product) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Không tìm thấy sản phẩm</h1>
+          <p className="text-gray-600 mb-4">Sản phẩm bạn đang tìm không tồn tại.</p>
+          <a href="/" className="text-blue-600 hover:underline">Quay lại trang chủ</a>
+        </div>
+      </div>
+    )
+  }
+
+  const handleReviewSubmit = async (reviewData) => {
+    try {
+      await reviewAPI.createReview({
+        ...reviewData,
+        product_id: product.id
+      })
+      
+      // Reload reviews
+      const reviewsData = await reviewAPI.getProductReviews(product.id)
+      setReviews(reviewsData.reviews || [])
+      
+      // Cập nhật rating
+      if (reviewsData.average_rating) {
+        setProduct(prev => ({
+          ...prev,
+          rating: {
+            average: reviewsData.average_rating,
+            count: reviewsData.total
+          }
+        }))
+      }
+    } catch (error) {
+      console.error('Error submitting review:', error)
+      throw error
+    }
+  }
 
   return (
     <div className="min-h-screen bg-white">
@@ -196,7 +305,7 @@ export default function ProductDetailPage({ params }) {
           <div className="lg:col-span-7">
             <ProductGallery 
               images={productImages} 
-              productName={MOCK_PRODUCT.name}
+              productName={product.name}
             />
           </div>
 
@@ -204,27 +313,27 @@ export default function ProductDetailPage({ params }) {
           <div className="lg:col-span-5">
             <div className="sticky top-24 space-y-6">
               {/* Product Info */}
-              <ProductInfo product={MOCK_PRODUCT} />
+              <ProductInfo product={product} />
 
               {/* Stock Status */}
-              {MOCK_PRODUCT.inventory.quantity < MOCK_PRODUCT.inventory.low_stock_threshold && (
+              {product.inventory?.quantity < product.inventory?.low_stock_threshold && (
                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
                   <p className="text-sm text-orange-800 font-medium">
-                    ⚠️ Chỉ còn {MOCK_PRODUCT.inventory.quantity} sản phẩm trong kho!
+                    ⚠️ Chỉ còn {product.inventory.quantity} sản phẩm trong kho!
                   </p>
                 </div>
               )}
 
               {/* Variant Selector */}
               <VariantSelector 
-                variants={MOCK_PRODUCT.variants}
+                variants={product.variants || { colors: [], sizes: [] }}
                 onVariantChange={handleVariantChange}
               />
 
               {/* Actions */}
               <div ref={addToCartButtonRef}>
                 <ProductActions
-                  maxStock={MOCK_PRODUCT.inventory.quantity}
+                  maxStock={product.inventory?.quantity || 0}
                   onAddToCart={handleAddToCart}
                   onBuyNow={handleBuyNow}
                 />
@@ -240,20 +349,20 @@ export default function ProductDetailPage({ params }) {
           <h2 className="text-2xl font-bold text-gray-900 mb-6">
             Thông tin chi tiết
           </h2>
-          <ProductDetails product={MOCK_PRODUCT} />
+          <ProductDetails product={product} />
         </div>
       </div>
 
-      {/* Reviews Section - Placeholder */}
+      {/* Reviews Section */}
       <div className="bg-gray-50 py-12">
         <div className="container mx-auto px-4">
           <div className="max-w-4xl mx-auto">
-            <h2 id="reviews" className="text-2xl font-bold text-gray-900 mb-6">
-              Đánh giá sản phẩm ({MOCK_PRODUCT.rating.count})
-            </h2>
-            <div className="bg-white rounded-lg shadow-sm p-8 text-center text-gray-500">
-              <p>Phần đánh giá sẽ được phát triển trong phase tiếp theo</p>
-            </div>
+            <ProductReviews
+              product={product}
+              reviews={reviews}
+              loading={reviewsLoading}
+              onSubmit={handleReviewSubmit}
+            />
           </div>
         </div>
       </div>
@@ -286,7 +395,7 @@ export default function ProductDetailPage({ params }) {
           <div>
             <p className="text-xs text-gray-500">Giá chỉ</p>
             <p className="text-xl font-bold text-red-600">
-              {MOCK_PRODUCT.pricing.sale.toLocaleString('vi-VN')}₫
+              {(product.pricing?.sale || product.pricing?.original || 0).toLocaleString('vi-VN')}₫
             </p>
           </div>
           <button
@@ -301,8 +410,8 @@ export default function ProductDetailPage({ params }) {
       {/* Animations & Overlays */}
       <FlyToCart
         isActive={flyToCartActive}
-        productImage={productImages[0].url}
-        productName={MOCK_PRODUCT.name}
+        productImage={productImages[0]?.url || product.image}
+        productName={product.name}
         startPosition={flyToCartPosition}
         onComplete={handleFlyToCartComplete}
       />

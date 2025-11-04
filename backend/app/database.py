@@ -31,6 +31,11 @@ database = client[DATABASE_NAME]
 
 # Collections
 users_collection = database.users
+categories_collection = database.categories
+products_collection = database.products
+reviews_collection = database.reviews
+orders_collection = database.orders
+cart_collection = database.cart
 
 # Sync MongoDB client for validation (optional)
 sync_client = MongoClient(MONGODB_URL)

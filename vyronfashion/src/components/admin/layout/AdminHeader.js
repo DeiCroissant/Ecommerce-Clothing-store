@@ -231,7 +231,7 @@ export function AdminHeader({ onMenuToggle }) {
                   textTransform: 'uppercase',
                   letterSpacing: '0.05em'
                 }}>
-                  {user?.role || 'Super Admin'}
+                  {user?.role === 'admin' ? 'Quản trị viên' : user?.role || 'Quản trị viên'}
                 </div>
               </div>
               

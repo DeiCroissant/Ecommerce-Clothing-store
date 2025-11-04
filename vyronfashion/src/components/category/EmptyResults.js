@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion';
 import { HeartIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import { formatVND } from '@/lib/formatCurrency';
+import { formatCurrency } from '@/lib/formatCurrency';
 
 /**
  * EmptyResults Component
@@ -81,39 +81,46 @@ export default function EmptyResults({
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {recommendations.slice(0, 4).map((product) => (
-                <Link
-                  key={product.id}
-                  href={`/products/${product.slug}`}
-                  className="group block bg-white rounded-lg overflow-hidden border border-gray-200 hover:shadow-lg transition-all"
-                >
-                  {/* Product Image */}
-                  <div className="aspect-[3/4] bg-gray-100 overflow-hidden">
-                    <img
-                      src={product.image}
-                      alt={product.name}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                    />
-                  </div>
-
-                  {/* Product Info */}
-                  <div className="p-3">
-                    <h4 className="text-sm font-semibold text-gray-900 mb-1 line-clamp-2 group-hover:text-blue-600 transition-colors">
-                      {product.name}
-                    </h4>
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg font-bold text-gray-900">
-                        {formatVND(product.price)}
-                      </span>
-                      {product.originalPrice && (
-                        <span className="text-xs text-gray-500 line-through">
-                          {formatVND(product.originalPrice)}
-                        </span>
-                      )}
+              {recommendations.slice(0, 4).map((product) => {
+                // Hỗ trợ cả format cũ (price, originalPrice) và format mới (pricing.sale, pricing.original)
+                const price = product.pricing?.sale || product.pricing?.original || product.price || 0
+                const originalPrice = product.pricing?.original && product.pricing?.sale ? product.pricing.original : product.originalPrice
+                const image = product.image || product.images?.[0] || ''
+                
+                return (
+                  <Link
+                    key={product.id}
+                    href={`/products/${product.slug}`}
+                    className="group block bg-white rounded-lg overflow-hidden border border-gray-200 hover:shadow-lg transition-all"
+                  >
+                    {/* Product Image */}
+                    <div className="aspect-[3/4] bg-gray-100 overflow-hidden">
+                      <img
+                        src={image}
+                        alt={product.name}
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                      />
                     </div>
-                  </div>
-                </Link>
-              ))}
+
+                    {/* Product Info */}
+                    <div className="p-3">
+                      <h4 className="text-sm font-semibold text-gray-900 mb-1 line-clamp-2 group-hover:text-blue-600 transition-colors">
+                        {product.name}
+                      </h4>
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-bold text-gray-900">
+                          {formatCurrency(price)}
+                        </span>
+                        {originalPrice && originalPrice > price && (
+                          <span className="text-xs text-gray-500 line-through">
+                            {formatCurrency(originalPrice)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+                )
+              })}
             </div>
           </div>
         )}

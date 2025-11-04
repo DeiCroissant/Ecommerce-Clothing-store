@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { 
@@ -17,67 +17,8 @@ import {
   CheckCircleIcon
 } from '@heroicons/react/24/outline';
 import { HeartIcon } from '@heroicons/react/24/solid';
-
-// Mock cart data - sẽ thay bằng context/redux sau
-const INITIAL_CART_ITEMS = [
-  {
-    id: '1',
-    productId: 'prod-001',
-    slug: 'ao-thun-basic-cotton-nam',
-    name: 'Áo Thun Basic Cotton Nam Cao Cấp',
-    brand: 'VYRON',
-    sku: 'VRN-AT-001',
-    image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400&h=400&fit=crop',
-    color: { name: 'Đen', hex: '#000000' },
-    size: 'M',
-    price: {
-      original: 499000,
-      sale: 349000,
-      discount: 30
-    },
-    quantity: 2,
-    stock: 28,
-    inStock: true
-  },
-  {
-    id: '2',
-    productId: 'prod-002',
-    slug: 'ao-so-mi-trang',
-    name: 'Áo Sơ Mi Trắng Oxford',
-    brand: 'VYRON',
-    sku: 'VRN-SM-002',
-    image: 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=400&h=400&fit=crop',
-    color: { name: 'Trắng', hex: '#FFFFFF' },
-    size: 'L',
-    price: {
-      original: 599000,
-      sale: 599000,
-      discount: 0
-    },
-    quantity: 1,
-    stock: 15,
-    inStock: true
-  },
-  {
-    id: '3',
-    productId: 'prod-003',
-    slug: 'quan-jean-slim-fit',
-    name: 'Quần Jean Slim Fit',
-    brand: 'VYRON',
-    sku: 'VRN-QJ-003',
-    image: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=400&h=400&fit=crop',
-    color: { name: 'Xanh đậm', hex: '#1E3A8A' },
-    size: '32',
-    price: {
-      original: 799000,
-      sale: 639000,
-      discount: 20
-    },
-    quantity: 1,
-    stock: 3, // Low stock
-    inStock: true
-  }
-];
+import * as cartAPI from '@/lib/api/cart';
+import * as productAPI from '@/lib/api/products';
 
 // Mock promo codes
 const PROMO_CODES = {
@@ -99,10 +40,11 @@ const PROVINCES = [
 ];
 
 export default function CartPage() {
-  const [cartItems, setCartItems] = useState(INITIAL_CART_ITEMS);
+  const [cartItems, setCartItems] = useState([]);
   const [savedItems, setSavedItems] = useState([]);
   const [deletedItem, setDeletedItem] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [loading, setLoading] = useState(true);
   
   // Promo code states
   const [promoCode, setPromoCode] = useState('');
@@ -116,6 +58,129 @@ export default function CartPage() {
   
   // Shipping estimator states
   const [selectedProvince, setSelectedProvince] = useState(null);
+
+  // Get current user ID
+  const getCurrentUserId = () => {
+    if (typeof window !== 'undefined') {
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr);
+          return user.id || user._id;
+        } catch (e) {
+          return null;
+        }
+      }
+    }
+    return null;
+  };
+
+  // Load cart from API
+  useEffect(() => {
+    const loadCart = async () => {
+      const userId = getCurrentUserId();
+      if (!userId) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const cartData = await cartAPI.getCart(userId);
+        const items = cartData.items || [];
+        
+        // Transform API data to UI format
+        const transformedItems = await Promise.all(
+          items.map(async (item, index) => {
+            try {
+              // Fetch product details for full information
+              const product = await productAPI.getProductById(item.product_id);
+              
+              // Find color and size from product variants
+              const color = product?.variants?.colors?.find(c => c.slug === item.variant_color) || 
+                           product?.variants?.colors?.find(c => c.name === item.variant_color) ||
+                           { name: item.variant_color || 'N/A', hex: '#000000' };
+              
+              const sizeObj = product?.variants?.sizes?.find(s => s.name === item.variant_size) ||
+                             { name: item.variant_size || 'N/A', available: true, stock: 0 };
+              
+              // Normalize image URL
+              const rawImage = item.product_image || product?.image || '';
+              const validImage = rawImage && (
+                rawImage.startsWith('/') || 
+                rawImage.startsWith('http://') || 
+                rawImage.startsWith('https://')
+              ) ? rawImage : '';
+              
+              return {
+                id: `${item.product_id}-${index}`,
+                productId: item.product_id,
+                slug: product?.slug || '',
+                name: item.product_name || product?.name || 'Sản phẩm',
+                brand: product?.brand?.name || 'VYRON',
+                sku: product?.sku || '',
+                image: validImage,
+                color: {
+                  name: typeof color === 'string' ? color : color.name,
+                  hex: typeof color === 'object' ? (color.hex || '#000000') : '#000000'
+                },
+                size: typeof sizeObj === 'string' ? sizeObj : sizeObj.name,
+                price: {
+                  original: product?.pricing?.original || item.price || 0,
+                  sale: item.price || product?.pricing?.sale || product?.pricing?.original || 0,
+                  discount: product?.pricing?.discount_percent || 0
+                },
+                quantity: item.quantity || 1,
+                stock: typeof sizeObj === 'object' ? sizeObj.stock : 0,
+                inStock: typeof sizeObj === 'object' ? sizeObj.available !== false : true,
+                itemIndex: index // Store index for API calls
+              };
+            } catch (error) {
+              console.error('Error loading product for cart item:', error);
+              // Return basic item if product fetch fails
+              // Normalize image URL
+              const rawImage = item.product_image || '';
+              const validImage = rawImage && (
+                rawImage.startsWith('/') || 
+                rawImage.startsWith('http://') || 
+                rawImage.startsWith('https://')
+              ) ? rawImage : '';
+              
+              return {
+                id: `${item.product_id}-${index}`,
+                productId: item.product_id,
+                slug: '',
+                name: item.product_name || 'Sản phẩm',
+                brand: 'VYRON',
+                sku: '',
+                image: validImage,
+                color: { name: item.variant_color || 'N/A', hex: '#000000' },
+                size: item.variant_size || 'N/A',
+                price: {
+                  original: item.price || 0,
+                  sale: item.price || 0,
+                  discount: 0
+                },
+                quantity: item.quantity || 1,
+                stock: 0,
+                inStock: true,
+                itemIndex: index
+              };
+            }
+          })
+        );
+        
+        setCartItems(transformedItems);
+      } catch (error) {
+        console.error('Error loading cart:', error);
+        setCartItems([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadCart();
+  }, []);
 
   // Calculate totals
   const subtotal = cartItems.reduce((sum, item) => sum + (item.price.sale * item.quantity), 0);
@@ -148,13 +213,17 @@ export default function CartPage() {
   const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   // Handle quantity change
-  const handleQuantityChange = (itemId, newQuantity) => {
+  const handleQuantityChange = async (itemId, newQuantity) => {
     const item = cartItems.find(i => i.id === itemId);
+    if (!item) return;
     
     // Validation
-    if (newQuantity < 1 || newQuantity > item.stock) {
+    if (newQuantity < 1 || (item.stock > 0 && newQuantity > item.stock)) {
       return;
     }
+
+    const userId = getCurrentUserId();
+    if (!userId) return;
 
     // Optimistic update
     setCartItems(prev => 
@@ -165,26 +234,149 @@ export default function CartPage() {
       )
     );
 
-    // Simulate API call
-    setIsUpdating(true);
-    setTimeout(() => setIsUpdating(false), 300);
+    // Update via API
+    try {
+      setIsUpdating(true);
+      await cartAPI.updateCartItemQuantity(userId, item.itemIndex, newQuantity);
+    } catch (error) {
+      console.error('Error updating quantity:', error);
+      // Revert on error
+      setCartItems(prev => 
+        prev.map(item => 
+          item.id === itemId 
+            ? { ...item, quantity: item.quantity }
+            : item
+        )
+      );
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   // Handle delete item
-  const handleDeleteItem = (itemId) => {
+  const handleDeleteItem = async (itemId) => {
     const item = cartItems.find(i => i.id === itemId);
+    if (!item) return;
+
+    const userId = getCurrentUserId();
+    if (!userId) return;
+
+    // Store for undo
     setDeletedItem(item);
+    
+    // Optimistic update
     setCartItems(prev => prev.filter(i => i.id !== itemId));
+
+    // Delete via API
+    try {
+      await cartAPI.removeCartItem(userId, item.itemIndex);
+    } catch (error) {
+      console.error('Error deleting item:', error);
+      // Revert on error
+      setCartItems(prev => [...prev, item].sort((a, b) => a.itemIndex - b.itemIndex));
+      setDeletedItem(null);
+      return;
+    }
 
     // Auto-clear undo after 5 seconds
     setTimeout(() => setDeletedItem(null), 5000);
   };
 
   // Handle undo delete
-  const handleUndoDelete = () => {
-    if (deletedItem) {
-      setCartItems(prev => [...prev, deletedItem]);
+  const handleUndoDelete = async () => {
+    if (!deletedItem) return;
+
+    const userId = getCurrentUserId();
+    if (!userId) return;
+
+    // Re-add to cart
+    try {
+      await cartAPI.addToCart(
+        userId,
+        deletedItem.productId,
+        deletedItem.color.name,
+        deletedItem.size,
+        deletedItem.quantity
+      );
+      
+      // Reload cart to get updated indices
+      const cartData = await cartAPI.getCart(userId);
+      const items = cartData.items || [];
+      
+      // Transform and set
+      const transformedItems = await Promise.all(
+        items.map(async (item, index) => {
+          try {
+            const product = await productAPI.getProductById(item.product_id);
+            const color = product?.variants?.colors?.find(c => c.slug === item.variant_color) || 
+                         { name: item.variant_color || 'N/A', hex: '#000000' };
+            const sizeObj = product?.variants?.sizes?.find(s => s.name === item.variant_size) ||
+                           { name: item.variant_size || 'N/A', available: true, stock: 0 };
+            
+            // Normalize image URL
+            const rawImage = item.product_image || product?.image || '';
+            const validImage = rawImage && (
+              rawImage.startsWith('/') || 
+              rawImage.startsWith('http://') || 
+              rawImage.startsWith('https://')
+            ) ? rawImage : '';
+            
+            return {
+              id: `${item.product_id}-${index}`,
+              productId: item.product_id,
+              slug: product?.slug || '',
+              name: item.product_name || product?.name || 'Sản phẩm',
+              brand: product?.brand?.name || 'VYRON',
+              sku: product?.sku || '',
+              image: validImage,
+              color: {
+                name: typeof color === 'string' ? color : color.name,
+                hex: typeof color === 'object' ? (color.hex || '#000000') : '#000000'
+              },
+              size: typeof sizeObj === 'string' ? sizeObj : sizeObj.name,
+              price: {
+                original: product?.pricing?.original || item.price || 0,
+                sale: item.price || product?.pricing?.sale || product?.pricing?.original || 0,
+                discount: product?.pricing?.discount_percent || 0
+              },
+              quantity: item.quantity || 1,
+              stock: typeof sizeObj === 'object' ? sizeObj.stock : 0,
+              inStock: typeof sizeObj === 'object' ? sizeObj.available !== false : true,
+              itemIndex: index
+            };
+          } catch (error) {
+            // Normalize image URL
+            const rawImage = item.product_image || '';
+            const validImage = rawImage && (
+              rawImage.startsWith('/') || 
+              rawImage.startsWith('http://') || 
+              rawImage.startsWith('https://')
+            ) ? rawImage : '';
+            
+            return {
+              id: `${item.product_id}-${index}`,
+              productId: item.product_id,
+              slug: '',
+              name: item.product_name || 'Sản phẩm',
+              brand: 'VYRON',
+              sku: '',
+              image: validImage,
+              color: { name: item.variant_color || 'N/A', hex: '#000000' },
+              size: item.variant_size || 'N/A',
+              price: { original: item.price || 0, sale: item.price || 0, discount: 0 },
+              quantity: item.quantity || 1,
+              stock: 0,
+              inStock: true,
+              itemIndex: index
+            };
+          }
+        })
+      );
+      
+      setCartItems(transformedItems);
       setDeletedItem(null);
+    } catch (error) {
+      console.error('Error undoing delete:', error);
     }
   };
 
@@ -238,6 +430,25 @@ export default function CartPage() {
   const handleRemoveSaved = (itemId) => {
     setSavedItems(prev => prev.filter(i => i.id !== itemId));
   };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-12">
+        <div className="container mx-auto px-4">
+          <div className="max-w-2xl mx-auto text-center">
+            <div className="bg-white rounded-lg shadow-sm p-12">
+              <div className="animate-pulse">
+                <div className="w-32 h-32 bg-gray-200 rounded-full mx-auto mb-6"></div>
+                <div className="h-8 bg-gray-200 rounded w-64 mx-auto mb-4"></div>
+                <div className="h-4 bg-gray-200 rounded w-96 mx-auto"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Empty cart state
   if (cartItems.length === 0 && !deletedItem) {
@@ -440,19 +651,34 @@ function CartItemCard({ item, onQuantityChange, onDelete, onSaveForLater, isUpda
     ? (item.price.original - item.price.sale) * quantity 
     : 0;
 
+  // Normalize image URL
+  const isValidImageUrl = item.image && (
+    item.image.startsWith('/') || 
+    item.image.startsWith('http://') || 
+    item.image.startsWith('https://')
+  );
+  const imageUrl = isValidImageUrl ? item.image : '/placeholder-product.jpg';
+
   return (
     <div className="bg-white rounded-lg shadow-sm p-4 md:p-6">
       <div className="flex gap-4">
         {/* Product Image */}
-        <Link href={`/products/${item.slug}`} className="flex-shrink-0">
+        <Link href={item.slug ? `/products/${item.slug}` : '#'} className="flex-shrink-0">
           <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-lg overflow-hidden bg-gray-100">
-            <Image
-              src={item.image}
-              alt={item.name}
-              fill
-              className="object-cover hover:scale-105 transition-transform"
-              sizes="128px"
-            />
+            {isValidImageUrl ? (
+              <Image
+                src={imageUrl}
+                alt={item.name}
+                fill
+                className="object-cover hover:scale-105 transition-transform"
+                sizes="128px"
+                unoptimized={imageUrl.startsWith('http') && !imageUrl.includes('localhost')}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">
+                No image
+              </div>
+            )}
           </div>
         </Link>
 
@@ -465,7 +691,7 @@ function CartItemCard({ item, onQuantityChange, onDelete, onSaveForLater, isUpda
               
               {/* Product Name */}
               <Link 
-                href={`/products/${item.slug}`}
+                href={item.slug ? `/products/${item.slug}` : '#'}
                 className="font-semibold text-gray-900 hover:text-blue-600 line-clamp-2 mb-2"
               >
                 {item.name}

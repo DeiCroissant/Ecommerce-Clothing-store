@@ -28,45 +28,45 @@ import {
 const navigationGroups = [
   {
     id: 'main',
-    title: 'Main',
+    title: 'Chính',
     items: [
-      { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+      { href: '/admin', label: 'Bảng điều khiển', icon: LayoutDashboard },
       { 
         href: '/admin/orders', 
-        label: 'Orders', 
+        label: 'Đơn hàng', 
         icon: ShoppingBag,
         badge: 12,
         submenu: [
-          { href: '/admin/orders', label: 'All Orders' },
-          { href: '/admin/orders/pending', label: 'Pending' },
-          { href: '/admin/orders/cancelled', label: 'Cancelled' }
+          { href: '/admin/orders', label: 'Tất cả đơn hàng' },
+          { href: '/admin/orders/pending', label: 'Chờ xử lý' },
+          { href: '/admin/orders/cancelled', label: 'Đã hủy' }
         ]
       },
       { 
         href: '/admin/products', 
-        label: 'Products', 
+        label: 'Sản phẩm', 
         icon: Package,
         submenu: [
-          { href: '/admin/products', label: 'All Products' },
-          { href: '/admin/products/new', label: 'Add New' },
-          { href: '/admin/products/categories', label: 'Categories' },
-          { href: '/admin/products/attributes', label: 'Attributes' }
+          { href: '/admin/products', label: 'Tất cả sản phẩm' },
+          { href: '/admin/products/new', label: 'Thêm mới' },
+          { href: '/admin/products/categories', label: 'Danh mục' },
+          { href: '/admin/products/attributes', label: 'Thuộc tính' }
         ]
       },
-      { href: '/admin/customers', label: 'Customers', icon: Users }
+      { href: '/admin/customers', label: 'Khách hàng', icon: Users }
     ]
   },
   {
     id: 'content',
-    title: 'Content',
+    title: 'Nội dung',
     items: [
       { 
         href: '/admin/marketing', 
         label: 'Marketing', 
         icon: Tag,
         submenu: [
-          { href: '/admin/marketing/coupons', label: 'Coupons' },
-          { href: '/admin/marketing/campaigns', label: 'Campaigns' }
+          { href: '/admin/marketing/coupons', label: 'Mã giảm giá' },
+          { href: '/admin/marketing/campaigns', label: 'Chiến dịch' }
         ]
       },
       { 
@@ -74,25 +74,25 @@ const navigationGroups = [
         label: 'CMS', 
         icon: FileText,
         submenu: [
-          { href: '/admin/cms/banners', label: 'Banners' },
-          { href: '/admin/cms/pages', label: 'Pages' }
+          { href: '/admin/cms/banners', label: 'Banner' },
+          { href: '/admin/cms/pages', label: 'Trang' }
         ]
       },
-      { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 }
+      { href: '/admin/analytics', label: 'Phân tích', icon: BarChart3 }
     ]
   },
   {
     id: 'settings',
-    title: 'Settings',
+    title: 'Cài đặt',
     items: [
       { 
         href: '/admin/settings', 
-        label: 'Settings', 
+        label: 'Cài đặt', 
         icon: Settings,
         submenu: [
-          { href: '/admin/settings/store', label: 'Store Settings' },
-          { href: '/admin/settings/payments', label: 'Payments & Shipping' },
-          { href: '/admin/settings/admins', label: 'Admin & Permissions' }
+          { href: '/admin/settings/store', label: 'Cài đặt cửa hàng' },
+          { href: '/admin/settings/payments', label: 'Thanh toán & Vận chuyển' },
+          { href: '/admin/settings/admins', label: 'Quản trị viên & Phân quyền' }
         ]
       }
     ]
@@ -141,7 +141,7 @@ export function AdminSidebar({ isOpen, onClose }) {
           <button
             className="sidebar-toggle-btn hidden lg:flex"
             onClick={() => setIsCollapsed(!isCollapsed)}
-            title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={isCollapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
           >
             {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
           </button>
@@ -150,7 +150,7 @@ export function AdminSidebar({ isOpen, onClose }) {
           <button
             className="sidebar-toggle-btn lg:hidden"
             onClick={onClose}
-            title="Close sidebar"
+            title="Đóng thanh bên"
           >
             <X size={20} />
           </button>
@@ -229,8 +229,8 @@ export function AdminSidebar({ isOpen, onClose }) {
           <div className="sidebar-user">
             <div className="sidebar-user-avatar">A</div>
             <div className="sidebar-user-info">
-              <div className="sidebar-user-name">Admin User</div>
-              <div className="sidebar-user-role">Super Admin</div>
+            <div className="sidebar-user-name">Quản trị viên</div>
+            <div className="sidebar-user-role">Quản trị viên cấp cao</div>
             </div>
           </div>
         </div>

@@ -6,29 +6,7 @@ import { ShoppingCartIcon, UserIcon, MagnifyingGlassIcon, Bars3Icon, XMarkIcon }
 import { useRouter } from 'next/navigation';
 import AuthModal from '../ui/AuthModal';
 import { ArrowRightOnRectangleIcon, UserCircleIcon } from '@heroicons/react/24/outline';
-
-const categories = [
-  {
-    name: 'Áo Nam',
-    slug: 'ao-nam',
-    subcategories: ['Áo Thun', 'Áo Sơ Mi', 'Áo Khoác', 'Áo Hoodie']
-  },
-  {
-    name: 'Váy Nữ',
-    slug: 'vay-nu',
-    subcategories: ['Váy Ngắn', 'Váy Dài', 'Váy Công Sở', 'Váy Dạ Hội']
-  },
-  {
-    name: 'Quần',
-    slug: 'quan',
-    subcategories: ['Quần Jean', 'Quần Kaki', 'Quần Short', 'Quần Âu']
-  },
-  {
-    name: 'Phụ Kiện',
-    slug: 'phu-kien',
-    subcategories: ['Túi Xách', 'Giày Dép', 'Mũ Nón', 'Thắt Lưng']
-  }
-];
+import * as categoryAPI from '@/lib/api/categories';
 
 function AccountDropdown({ user, onLogout, onAccountOverview, onAdmin, open, onClose }) {
   const dropdownRef = useRef();
@@ -101,7 +79,67 @@ export default function Header() {
   const [showDropdown, setShowDropdown] = useState(false);
   // Simple toast state
   const [toast, setToast] = useState({ visible: false, message: '', kind: 'success' });
+  const [categories, setCategories] = useState([]);
   const router = useRouter();
+
+  // Load categories từ API
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        console.log('Loading categories from API...');
+        const mainCategories = await categoryAPI.getMainCategories();
+        console.log('Main categories loaded:', mainCategories);
+        
+        if (!mainCategories || mainCategories.length === 0) {
+          console.log('No categories found');
+          setCategories([]);
+          return;
+        }
+        
+        const categoriesWithSub = await Promise.all(
+          mainCategories.map(async (cat) => {
+            try {
+              const subCategories = await categoryAPI.getSubCategories(cat.id);
+              return {
+                name: cat.name,
+                slug: cat.slug,
+                subcategories: subCategories.map(sub => ({
+                  name: sub.name,
+                  slug: sub.slug
+                }))
+              };
+            } catch (error) {
+              console.error(`Error loading subcategories for ${cat.name}:`, error);
+              return {
+                name: cat.name,
+                slug: cat.slug,
+                subcategories: []
+              };
+            }
+          })
+        );
+        
+        console.log('Categories with subcategories:', categoriesWithSub);
+        setCategories(categoriesWithSub);
+      } catch (error) {
+        console.error('Error loading categories:', error);
+        setCategories([]);
+      }
+    };
+
+    loadCategories();
+
+    // Reload categories khi có thay đổi trong admin
+    const handleCategoryChange = () => {
+      console.log('Category changed event received, reloading...');
+      loadCategories();
+    };
+    window.addEventListener('categoryChanged', handleCategoryChange);
+    
+    return () => {
+      window.removeEventListener('categoryChanged', handleCategoryChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -169,17 +207,19 @@ export default function Header() {
                 </Link>
                 
                 {/* Dropdown Subcategories */}
-                <div className="absolute top-full left-0 w-48 bg-white shadow-lg rounded-lg py-2 border border-zinc-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                  {category.subcategories.map((sub) => (
-                    <Link
-                      key={sub}
-                      href={`/category/${category.slug}?sub=${encodeURIComponent(sub)}`}
-                      className="block px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900 transition-colors"
-                    >
-                      {sub}
-                    </Link>
-                  ))}
-                </div>
+                {category.subcategories && category.subcategories.length > 0 && (
+                  <div className="absolute top-full left-0 w-48 bg-white shadow-lg rounded-lg py-2 border border-zinc-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                    {category.subcategories.map((sub) => (
+                      <Link
+                        key={sub.slug || sub}
+                        href={`/category/${sub.slug || category.slug}?sub=${encodeURIComponent(sub.name || sub)}`}
+                        className="block px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900 transition-colors"
+                      >
+                        {sub.name || sub}
+                      </Link>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </nav>
@@ -290,18 +330,20 @@ export default function Header() {
                 >
                   {category.name}
                 </Link>
-                <div className="pl-4 space-y-2">
-                  {category.subcategories.map((sub) => (
-                    <Link
-                      key={sub}
-                      href={`/category/${category.slug}?sub=${encodeURIComponent(sub)}`}
-                      className="block text-sm text-zinc-600 hover:text-zinc-900 py-1 transition-colors"
-                      onClick={() => setIsMenuOpen(false)}
-                    >
-                      {sub}
-                    </Link>
-                  ))}
-                </div>
+                {category.subcategories && category.subcategories.length > 0 && (
+                  <div className="pl-4 space-y-2">
+                    {category.subcategories.map((sub) => (
+                      <Link
+                        key={sub.slug || sub}
+                        href={`/category/${sub.slug || category.slug}?sub=${encodeURIComponent(sub.name || sub)}`}
+                        className="block text-sm text-zinc-600 hover:text-zinc-900 py-1 transition-colors"
+                        onClick={() => setIsMenuOpen(false)}
+                      >
+                        {sub.name || sub}
+                      </Link>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </nav>
