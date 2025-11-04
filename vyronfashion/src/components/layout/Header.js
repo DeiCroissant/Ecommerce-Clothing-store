@@ -31,7 +31,6 @@ const categories = [
 ];
 
 function AccountDropdown({ user, onLogout, onAccountOverview, onAdmin, open, onClose }) {
-function AccountDropdown({ user, onLogout, onAccountOverview, open, onClose }) {
   const dropdownRef = useRef();
 
   useEffect(() => {

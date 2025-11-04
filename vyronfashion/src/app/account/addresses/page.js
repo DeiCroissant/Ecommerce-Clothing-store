@@ -1,220 +1,153 @@
 'use client'
 
-import { useState } from 'react'
-import { Plus } from 'lucide-react'
-import { PageHeader } from '@/components/account/ui/PageHeader'
+import { useState, useEffect } from 'react'
+import { PageHeader, AccountCard, LoadingSkeleton } from '@/components/account'
 import { AddressList } from '@/components/account/addresses/AddressList'
 import { AddressFormModal } from '@/components/account/addresses/AddressFormModal'
-import { DeleteConfirmModal } from '@/components/account/addresses/DeleteConfirmModal'
 import { EmptyAddresses } from '@/components/account/addresses/EmptyAddresses'
-import { Toast } from '@/components/account/ui/Toast'
-import '@/styles/account-addresses.css'
-import { mockAddresses, MAX_ADDRESSES } from '@/lib/account/mockAddressData'
+import { Plus } from 'lucide-react'
 
 export default function AddressesPage() {
-  const [addresses, setAddresses] = useState(mockAddresses)
-  const [showAddModal, setShowAddModal] = useState(false)
-  const [showEditModal, setShowEditModal] = useState(false)
-  const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [selectedAddress, setSelectedAddress] = useState(null)
-  const [showToast, setShowToast] = useState(false)
-  const [toastMessage, setToastMessage] = useState({ type: 'success', text: '' })
+  const [addresses, setAddresses] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showModal, setShowModal] = useState(false)
+  const [editingAddress, setEditingAddress] = useState(null)
 
-  // Add new address
-  const handleAddAddress = (data) => {
-    const newAddress = {
-      ...data,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString()
-    }
+  useEffect(() => {
+    fetchAddresses()
+  }, [])
 
-    // If set as default, remove default from others
-    if (data.isDefault) {
-      setAddresses(prev => prev.map(addr => ({ ...addr, isDefault: false })))
-    }
-
-    setAddresses(prev => [...prev, newAddress])
-    setShowAddModal(false)
-
-    setToastMessage({
-      type: 'success',
-      text: 'Đã thêm địa chỉ mới thành công!'
-    })
-    setShowToast(true)
-    setTimeout(() => setShowToast(false), 3000)
-  }
-
-  // Edit address
-  const handleEditAddress = (data) => {
-    setAddresses(prev =>
-      prev.map(addr => {
-        if (addr.id === selectedAddress.id) {
-          // If set as default, remove default from others
-          if (data.isDefault && !addr.isDefault) {
-            return data.isDefault ? { ...data, id: addr.id, createdAt: addr.createdAt } : addr
-          }
-          return { ...data, id: addr.id, createdAt: addr.createdAt }
-        }
-        // Remove default from other addresses if this one is set as default
-        if (data.isDefault) {
-          return { ...addr, isDefault: false }
-        }
-        return addr
-      })
-    )
-
-    setShowEditModal(false)
-    setSelectedAddress(null)
-
-    setToastMessage({
-      type: 'success',
-      text: 'Đã cập nhật địa chỉ thành công!'
-    })
-    setShowToast(true)
-    setTimeout(() => setShowToast(false), 3000)
-  }
-
-  // Delete address
-  const handleDeleteAddress = () => {
-    const wasDefault = selectedAddress.isDefault
-
-    setAddresses(prev => {
-      const filtered = prev.filter(addr => addr.id !== selectedAddress.id)
+  const fetchAddresses = async () => {
+    try {
+      // TODO: Replace with actual API call
+      setLoading(true)
+      // const response = await fetch('/api/addresses')
+      // const data = await response.json()
+      // setAddresses(data)
       
-      // If deleted default address, set first as default
-      if (wasDefault && filtered.length > 0) {
-        filtered[0].isDefault = true
+      // Mock data for now
+      setTimeout(() => {
+        setAddresses([])
+        setLoading(false)
+      }, 500)
+    } catch (error) {
+      console.error('Error fetching addresses:', error)
+      setLoading(false)
+    }
+  }
+
+  const handleAddAddress = () => {
+    setEditingAddress(null)
+    setShowModal(true)
+  }
+
+  const handleEditAddress = (address) => {
+    setEditingAddress(address)
+    setShowModal(true)
+  }
+
+  const handleSaveAddress = async (addressData) => {
+    try {
+      if (editingAddress) {
+        // Update existing address
+        const updated = addresses.map(addr =>
+          addr.id === editingAddress.id ? { ...addr, ...addressData } : addr
+        )
+        setAddresses(updated)
+      } else {
+        // Add new address
+        const newAddress = {
+          id: Date.now().toString(),
+          ...addressData,
+        }
+        setAddresses([...addresses, newAddress])
       }
-      
-      return filtered
-    })
-
-    setShowDeleteModal(false)
-    setSelectedAddress(null)
-
-    setToastMessage({
-      type: 'success',
-      text: 'Đã xóa địa chỉ thành công!'
-    })
-    setShowToast(true)
-    setTimeout(() => setShowToast(false), 3000)
+      setShowModal(false)
+    } catch (error) {
+      console.error('Error saving address:', error)
+      throw error
+    }
   }
 
-  // Set as default
-  const handleSetDefault = (id) => {
-    setAddresses(prev =>
-      prev.map(addr => ({
-        ...addr,
-        isDefault: addr.id === id
-      }))
+  const handleDeleteAddress = async (addressId) => {
+    try {
+      setAddresses(addresses.filter(addr => addr.id !== addressId))
+    } catch (error) {
+      console.error('Error deleting address:', error)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="addresses-page">
+        <PageHeader title="Địa chỉ giao hàng" />
+        <LoadingSkeleton type="card" count={2} />
+      </div>
     )
-
-    setToastMessage({
-      type: 'success',
-      text: 'Đã đặt làm địa chỉ mặc định!'
-    })
-    setShowToast(true)
-    setTimeout(() => setShowToast(false), 3000)
   }
-
-  // Open edit modal
-  const openEditModal = (id) => {
-    const address = addresses.find(addr => addr.id === id)
-    setSelectedAddress(address)
-    setShowEditModal(true)
-  }
-
-  // Open delete modal
-  const openDeleteModal = (id) => {
-    const address = addresses.find(addr => addr.id === id)
-    setSelectedAddress(address)
-    setShowDeleteModal(true)
-  }
-
-  // Check if can add more addresses
-  const canAddMore = addresses.length < MAX_ADDRESSES
 
   return (
-    <>
+    <div className="addresses-page">
       <PageHeader
         title="Địa chỉ giao hàng"
         description="Quản lý địa chỉ nhận hàng của bạn"
+        action={
+          <button onClick={handleAddAddress} className="btn-primary">
+            <Plus size={20} />
+            Thêm địa chỉ mới
+          </button>
+        }
       />
 
       {addresses.length === 0 ? (
-        <EmptyAddresses onAddAddress={() => setShowAddModal(true)} />
+        <EmptyAddresses onAddAddress={handleAddAddress} />
       ) : (
-        <>
-          <div className="addresses-header">
-            <p className="addresses-count">
-              {addresses.length} / {MAX_ADDRESSES} địa chỉ
-            </p>
-            {canAddMore && (
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="btn-primary"
-                type="button"
-              >
-                <Plus size={20} />
-                Thêm địa chỉ mới
-              </button>
-            )}
-            {!canAddMore && (
-              <p className="addresses-limit">
-                Bạn đã đạt giới hạn {MAX_ADDRESSES} địa chỉ
-              </p>
-            )}
-          </div>
-
-          <AddressList
-            addresses={addresses}
-            onEdit={openEditModal}
-            onDelete={openDeleteModal}
-            onSetDefault={handleSetDefault}
-          />
-        </>
+        <AddressList
+          addresses={addresses}
+          onEdit={handleEditAddress}
+          onDelete={handleDeleteAddress}
+        />
       )}
 
-      {/* Add Modal */}
-      {showAddModal && (
+      {showModal && (
         <AddressFormModal
-          onSave={handleAddAddress}
-          onCancel={() => setShowAddModal(false)}
+          address={editingAddress}
+          onSave={handleSaveAddress}
+          onClose={() => setShowModal(false)}
         />
       )}
 
-      {/* Edit Modal */}
-      {showEditModal && selectedAddress && (
-        <AddressFormModal
-          address={selectedAddress}
-          onSave={handleEditAddress}
-          onCancel={() => {
-            setShowEditModal(false)
-            setSelectedAddress(null)
-          }}
-        />
-      )}
+      <style jsx>{`
+        .addresses-page {
+          max-width: 1200px;
+        }
 
-      {/* Delete Confirm Modal */}
-      {showDeleteModal && selectedAddress && (
-        <DeleteConfirmModal
-          address={selectedAddress}
-          onConfirm={handleDeleteAddress}
-          onCancel={() => {
-            setShowDeleteModal(false)
-            setSelectedAddress(null)
-          }}
-        />
-      )}
+        .btn-primary {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.75rem 1.25rem;
+          background: #18181b;
+          color: white;
+          border: none;
+          border-radius: 0.5rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
 
-      {/* Toast */}
-      {showToast && (
-        <Toast
-          type={toastMessage.type}
-          message={toastMessage.text}
-          onClose={() => setShowToast(false)}
-        />
-      )}
-    </>
+        .btn-primary:hover {
+          background: #27272a;
+          transform: translateY(-1px);
+        }
+
+        @media (max-width: 640px) {
+          .btn-primary {
+            width: 100%;
+            justify-content: center;
+          }
+        }
+      `}</style>
+    </div>
   )
 }

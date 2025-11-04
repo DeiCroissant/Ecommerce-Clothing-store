@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useIsDesktop } from '@/hooks/useIsDesktop';
 
+// Skeleton Loader
+import HomePageSkeleton from '@/components/ui/HomePageSkeleton';
+
 // Standard Homepage Components
 import HeroBanner from '@/components/layout/HeroBanner';
 import FeaturedCategories from '@/components/composite/FeaturedCategories';
@@ -42,6 +45,12 @@ export default function HomePage() {
       setCanPlayVideo(true);
     }, 500);
   };
+
+  // Loading state: Show skeleton during SSR and initial client render
+  // This prevents hydration mismatch (server renders skeleton, client initially renders skeleton)
+  if (isDesktop === null) {
+    return <HomePageSkeleton />;
+  }
 
   // Desktop: Scrollytelling Experience
   if (isDesktop) {

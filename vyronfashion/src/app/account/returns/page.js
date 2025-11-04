@@ -1,142 +1,125 @@
-'use client';
+'use client'
 
-import { useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
-import { PageHeader } from '@/components/account/ui/PageHeader';
-import { ReturnList } from '@/features/returns/components/ReturnList';
-import { ReturnFilters } from '@/features/returns/components/ReturnFilters';
-import { EmptyReturns } from '@/features/returns/components/EmptyReturns';
-import { 
-  mockReturns, 
-  getReturnsByStatus, 
-  canCancelReturn,
-  RETURNS_PER_PAGE 
-} from '@/lib/mockReturnsData';
-import { RotateCcw, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
-import '@/styles/account-returns.css';
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { PageHeader, EmptyState, LoadingSkeleton } from '@/components/account'
+import { ReturnList } from '@/features/returns/components/ReturnList'
+import { ReturnFilters } from '@/features/returns/components/ReturnFilters'
+import { PackageX, Plus } from 'lucide-react'
+import { mockReturns } from '@/lib/mockReturnsData'
 
 export default function ReturnsPage() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [activeStatus, setActiveStatus] = useState('all');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [returns, setReturns] = useState(mockReturns);
+  const [returns, setReturns] = useState([])
+  const [filteredReturns, setFilteredReturns] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState('all')
 
-  // Filter returns by status
-  const filteredReturns = getReturnsByStatus(activeStatus);
+  useEffect(() => {
+    fetchReturns()
+  }, [])
 
-  // Pagination
-  const totalPages = Math.ceil(filteredReturns.length / RETURNS_PER_PAGE);
-  const startIndex = (currentPage - 1) * RETURNS_PER_PAGE;
-  const endIndex = startIndex + RETURNS_PER_PAGE;
-  const paginatedReturns = filteredReturns.slice(startIndex, endIndex);
+  useEffect(() => {
+    filterReturns()
+  }, [returns, statusFilter])
 
-  // Reset to page 1 when filter changes
-  const handleStatusChange = (status) => {
-    setActiveStatus(status);
-    setCurrentPage(1);
-  };
-
-  // Handle cancel return
-  const handleCancelReturn = (returnId) => {
-    const returnItem = returns.find(r => r.returnId === returnId);
-    
-    if (!canCancelReturn(returnItem)) {
-      alert('Không thể hủy yêu cầu trả hàng này');
-      return;
+  const fetchReturns = async () => {
+    try {
+      setLoading(true)
+      // TODO: Replace with actual API call
+      setTimeout(() => {
+        setReturns(mockReturns)
+        setLoading(false)
+      }, 500)
+    } catch (error) {
+      console.error('Error fetching returns:', error)
+      setLoading(false)
     }
+  }
 
-    const confirmed = window.confirm('Bạn có chắc muốn hủy yêu cầu trả hàng này?');
-    
-    if (confirmed) {
-      // Update return status to rejected
-      setReturns(returns.map(r => 
-        r.returnId === returnId 
-          ? { ...r, status: 'rejected', rejectReason: 'Khách hàng hủy yêu cầu' }
-          : r
-      ));
+  const filterReturns = () => {
+    if (statusFilter === 'all') {
+      setFilteredReturns(returns)
+    } else {
+      setFilteredReturns(returns.filter(ret => ret.status === statusFilter))
     }
-  };
+  }
 
-  // Show success message if redirected from create page
-  const showSuccessMessage = searchParams.get('status') === 'success';
+  if (loading) {
+    return (
+      <div className="returns-page">
+        <PageHeader title="Trả hàng & Hoàn tiền" />
+        <LoadingSkeleton type="card" count={2} />
+      </div>
+    )
+  }
 
   return (
     <div className="returns-page">
       <PageHeader
-        title="Quản Lý Trả Hàng"
-        description="Theo dõi các yêu cầu trả hàng và hoàn tiền của bạn"
-        actions={
-          <Link href="/account/returns/new" className="btn btn-primary">
+        title="Trả hàng & Hoàn tiền"
+        description="Quản lý yêu cầu trả hàng và hoàn tiền"
+        action={
+          <Link href="/account/returns/new" className="btn-primary">
             <Plus size={20} />
-            Tạo yêu cầu trả hàng
+            Tạo yêu cầu mới
           </Link>
         }
       />
 
-      <div className="returns-page-container">
-        {/* Success Message */}
-        {showSuccessMessage && (
-          <div className="success-message">
-            <div className="success-icon">✓</div>
-            <div>
-              <strong>Gửi yêu cầu thành công!</strong>
-              <p>Chúng tôi sẽ xem xét và phản hồi trong vòng 24-48 giờ.</p>
-            </div>
-          </div>
-        )}
-
-        {/* Filters */}
-        <ReturnFilters 
-          activeStatus={activeStatus} 
-          onStatusChange={handleStatusChange}
+      {returns.length === 0 ? (
+        <EmptyState
+          icon={PackageX}
+          title="Chưa có yêu cầu trả hàng"
+          description="Bạn chưa có yêu cầu trả hàng nào"
+          actionLabel="Tạo yêu cầu trả hàng"
+          actionHref="/account/returns/new"
         />
+      ) : (
+        <>
+          <ReturnFilters activeFilter={statusFilter} onChange={setStatusFilter} />
 
-        {/* Returns List or Empty State */}
-        {filteredReturns.length === 0 ? (
-          <EmptyReturns type={activeStatus === 'all' ? 'no-returns' : 'no-results'} />
-        ) : (
-          <>
-            <ReturnList 
-              returns={paginatedReturns} 
-              onCancel={handleCancelReturn}
+          {filteredReturns.length === 0 ? (
+            <EmptyState
+              icon={PackageX}
+              title="Không tìm thấy yêu cầu"
+              description="Không có yêu cầu nào phù hợp với bộ lọc"
             />
+          ) : (
+            <ReturnList returns={filteredReturns} />
+          )}
+        </>
+      )}
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="pagination">
-                <button
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="pagination-btn"
-                  aria-label="Trang trước"
-                >
-                  <ChevronLeft size={20} />
-                </button>
+      <style jsx>{`
+        .returns-page {
+          max-width: 1200px;
+        }
 
-                <div className="pagination-info">
-                  Trang {currentPage} / {totalPages}
-                </div>
+        .btn-primary {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.75rem 1.25rem;
+          background: #18181b;
+          color: white;
+          border-radius: 0.5rem;
+          font-weight: 500;
+          text-decoration: none;
+          transition: all 0.2s;
+        }
 
-                <button
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="pagination-btn"
-                  aria-label="Trang sau"
-                >
-                  <ChevronRight size={20} />
-                </button>
-              </div>
-            )}
+        .btn-primary:hover {
+          background: #27272a;
+          transform: translateY(-1px);
+        }
 
-            {/* Results Summary */}
-            <div className="results-summary">
-              Hiển thị {startIndex + 1}-{Math.min(endIndex, filteredReturns.length)} trong tổng số {filteredReturns.length} yêu cầu
-            </div>
-          </>
-        )}
-      </div>
+        @media (max-width: 640px) {
+          .btn-primary {
+            width: 100%;
+            justify-content: center;
+          }
+        }
+      `}</style>
     </div>
-  );
+  )
 }

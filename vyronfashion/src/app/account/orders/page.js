@@ -1,155 +1,130 @@
-'use client';
+'use client'
 
-import { useState, useEffect, useMemo } from 'react';
-import { OrderList } from '@/features/orders/components/OrderList';
-import { OrderFilters } from '@/features/orders/components/OrderFilters';
-import { OrderSearch } from '@/features/orders/components/OrderSearch';
-import { OrderPagination } from '@/features/orders/components/OrderPagination';
-import { EmptyOrders } from '@/features/orders/components/EmptyOrders';
-import { 
-  mockOrders, 
-  ORDERS_PER_PAGE,
-  paginateOrders
-} from '@/lib/mockOrdersData';
-import '@/styles/account-orders.css';
+import { useState, useEffect } from 'react'
+import { PageHeader, EmptyState, LoadingSkeleton } from '@/components/account'
+import { OrderList } from '@/features/orders/components/OrderList'
+import { OrderFilters } from '@/features/orders/components/OrderFilters'
+import { OrderSearch } from '@/features/orders/components/OrderSearch'
+import { Package } from 'lucide-react'
+import { mockOrders } from '@/lib/mockOrdersData'
 
 export default function OrdersPage() {
-  // State
-  const [activeStatus, setActiveStatus] = useState('all');
-  const [activeDateRange, setActiveDateRange] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [orders, setOrders] = useState([])
+  const [filteredOrders, setFilteredOrders] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
 
-  // Filter & Search Logic
-  const filteredOrders = useMemo(() => {
-    let result = mockOrders;
-
-    // Apply status filter
-    if (activeStatus !== 'all') {
-      result = result.filter(order => order.status === activeStatus);
-    }
-
-    // Apply date range filter
-    if (activeDateRange !== 'all') {
-      const days = Number(activeDateRange);
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - days);
-      result = result.filter(order => new Date(order.orderDate) >= cutoffDate);
-    }
-
-    // Apply search
-    if (searchQuery) {
-      const lowerQuery = searchQuery.toLowerCase();
-      result = result.filter(order => {
-        const orderIdLower = order.id.toLowerCase();
-        return orderIdLower.includes(lowerQuery) ||
-          order.items.some(item => item.name.toLowerCase().includes(lowerQuery));
-      });
-    }
-
-    return result;
-  }, [activeStatus, activeDateRange, searchQuery]);
-
-  // Pagination
-  const paginatedData = useMemo(() => {
-    return paginateOrders(filteredOrders, currentPage, ORDERS_PER_PAGE);
-  }, [filteredOrders, currentPage]);
-
-  // Reset to page 1 when filters change
   useEffect(() => {
-    setCurrentPage(1);
-  }, [activeStatus, activeDateRange, searchQuery]);
+    fetchOrders()
+  }, [])
 
-  // Handlers
-  const handleStatusChange = (status) => {
-    setActiveStatus(status);
-  };
+  useEffect(() => {
+    filterOrders()
+  }, [orders, searchQuery, statusFilter])
 
-  const handleDateRangeChange = (range) => {
-    setActiveDateRange(range);
-  };
+  const fetchOrders = async () => {
+    try {
+      setLoading(true)
+      // TODO: Replace with actual API call
+      // const response = await fetch('/api/orders')
+      // const data = await response.json()
+      
+      // Mock data for now
+      setTimeout(() => {
+        setOrders(mockOrders)
+        setLoading(false)
+      }, 500)
+    } catch (error) {
+      console.error('Error fetching orders:', error)
+      setLoading(false)
+    }
+  }
 
-  const handleSearch = (query) => {
-    setSearchQuery(query);
-  };
+  const filterOrders = () => {
+    let filtered = [...orders]
 
-  const handlePageChange = (page) => {
-    setCurrentPage(page);
-    // Scroll to top
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+    // Filter by status
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(order => order.status === statusFilter)
+    }
 
-  const handleReorder = (order) => {
-    // Add all items from order to cart
-    console.log('Reorder:', order.id);
-    alert(`Đã thêm ${order.itemsCount} sản phẩm vào giỏ hàng!`);
-    // TODO: Implement add to cart logic
-  };
+    // Filter by search query
+    if (searchQuery) {
+      filtered = filtered.filter(order =>
+        order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        order.items.some(item =>
+          item.name.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      )
+    }
 
-  // Calculate display range
-  const startIndex = (currentPage - 1) * ORDERS_PER_PAGE;
-  const endIndex = startIndex + paginatedData.orders.length;
+    setFilteredOrders(filtered)
+  }
 
-  // Determine empty state type
-  const hasOrders = mockOrders.length > 0;
-  const hasFilteredResults = filteredOrders.length > 0;
+  if (loading) {
+    return (
+      <div className="orders-page">
+        <PageHeader title="Đơn hàng của tôi" />
+        <LoadingSkeleton type="card" count={3} />
+      </div>
+    )
+  }
 
   return (
     <div className="orders-page">
-      {/* Page Header */}
-      <div className="orders-header">
-        <div className="header-content">
-          <h1 className="page-title">Đơn Hàng Của Tôi</h1>
-          <p className="page-description">Theo dõi và quản lý đơn hàng của bạn</p>
-        </div>
-        
-        {hasOrders && (
-          <OrderSearch onSearch={handleSearch} />
-        )}
-      </div>
+      <PageHeader
+        title="Đơn hàng của tôi"
+        description="Theo dõi và quản lý đơn hàng của bạn"
+      />
 
-      {/* Filters */}
-      {hasOrders && (
-        <OrderFilters
-          activeStatus={activeStatus}
-          activeDateRange={activeDateRange}
-          onStatusChange={handleStatusChange}
-          onDateRangeChange={handleDateRangeChange}
+      {orders.length === 0 ? (
+        <EmptyState
+          icon={Package}
+          title="Chưa có đơn hàng nào"
+          description="Bạn chưa đặt đơn hàng nào. Hãy khám phá sản phẩm và đặt hàng ngay!"
+          actionLabel="Mua sắm ngay"
+          actionHref="/"
         />
-      )}
-
-      {/* Results Summary */}
-      {hasOrders && hasFilteredResults && (
-        <div className="results-summary">
-          <p>
-            Hiển thị <strong>{startIndex + 1}-{endIndex}</strong> trong tổng số{' '}
-            <strong>{filteredOrders.length}</strong> đơn hàng
-          </p>
-        </div>
-      )}
-
-      {/* Orders List or Empty State */}
-      {!hasOrders ? (
-        <EmptyOrders type="no-orders" />
-      ) : !hasFilteredResults ? (
-        <EmptyOrders type="no-results" />
       ) : (
         <>
-          <OrderList 
-            orders={paginatedData.orders}
-            onReorder={handleReorder}
-          />
-          
-          <OrderPagination
-            currentPage={paginatedData.currentPage}
-            totalPages={paginatedData.totalPages}
-            totalOrders={filteredOrders.length}
-            startIndex={startIndex}
-            endIndex={endIndex}
-            onPageChange={handlePageChange}
-          />
+          <div className="orders-controls">
+            <OrderSearch value={searchQuery} onChange={setSearchQuery} />
+            <OrderFilters activeFilter={statusFilter} onChange={setStatusFilter} />
+          </div>
+
+          {filteredOrders.length === 0 ? (
+            <EmptyState
+              icon={Package}
+              title="Không tìm thấy đơn hàng"
+              description="Không có đơn hàng nào phù hợp với bộ lọc của bạn"
+            />
+          ) : (
+            <OrderList orders={filteredOrders} />
+          )}
         </>
       )}
+
+      <style jsx>{`
+        .orders-page {
+          max-width: 1200px;
+        }
+
+        .orders-controls {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+          margin-bottom: 2rem;
+        }
+
+        @media (min-width: 768px) {
+          .orders-controls {
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+          }
+        }
+      `}</style>
     </div>
-  );
+  )
 }

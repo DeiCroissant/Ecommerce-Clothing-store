@@ -1,356 +1,294 @@
 'use client'
 
 import { useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import { Camera, Save, X, CheckCircle, AlertCircle } from 'lucide-react'
-import { AvatarUpload } from './AvatarUpload'
-import { Toast } from '../ui/Toast'
-
-// Validation schema
-const profileSchema = z.object({
-  firstName: z.string()
-    .min(1, 'Họ không được để trống')
-    .min(2, 'Họ phải có ít nhất 2 ký tự')
-    .max(50, 'Họ không được quá 50 ký tự'),
-  lastName: z.string()
-    .min(1, 'Tên không được để trống')
-    .min(2, 'Tên phải có ít nhất 2 ký tự')
-    .max(50, 'Tên không được quá 50 ký tự'),
-  email: z.string()
-    .min(1, 'Email không được để trống')
-    .email('Email không hợp lệ'),
-  phone: z.string()
-    .regex(/^(0|\+84)[0-9]{9}$/, 'Số điện thoại không hợp lệ (VD: 0901234567)')
-    .optional()
-    .or(z.literal('')),
-  dateOfBirth: z.string()
-    .optional()
-    .refine((date) => {
-      if (!date) return true
-      const age = Math.floor((new Date() - new Date(date)) / (365.25 * 24 * 60 * 60 * 1000))
-      return age >= 13
-    }, 'Bạn phải đủ 13 tuổi trở lên'),
-  gender: z.enum(['male', 'female', 'other', '']).optional(),
-})
+import { Save, Loader } from 'lucide-react'
 
 export function ProfileForm({ user, onUpdate }) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
-  const [showToast, setShowToast] = useState(false)
-  const [toastMessage, setToastMessage] = useState({ type: 'success', text: '' })
-  const [showAvatarModal, setShowAvatarModal] = useState(false)
-  const [pendingChanges, setPendingChanges] = useState(null)
-  const [undoTimeout, setUndoTimeout] = useState(null)
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isDirty },
-    reset,
-    watch,
-  } = useForm({
-    resolver: zodResolver(profileSchema),
-    defaultValues: {
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      phone: user.phone || '',
-      dateOfBirth: user.dateOfBirth || '',
-      gender: user.gender || '',
-    },
+  const [formData, setFormData] = useState({
+    firstName: user?.firstName || '',
+    lastName: user?.lastName || '',
+    email: user?.email || '',
+    phone: user?.phone || '',
+    dateOfBirth: user?.dateOfBirth || '',
+    gender: user?.gender || '',
   })
+  const [saving, setSaving] = useState(false)
+  const [errors, setErrors] = useState({})
 
-  const emailValue = watch('email')
-  const emailChanged = emailValue !== user.email
-
-  const onSubmit = async (data) => {
-    setIsSaving(true)
-
-    // Mock API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    // Store changes for undo
-    setPendingChanges({ previous: user, new: data })
-
-    // Optimistic update
-    if (onUpdate) {
-      onUpdate(data)
-    }
-
-    setIsSaving(false)
-    setIsEditing(false)
-
-    // Show success toast with undo
-    setToastMessage({
-      type: 'success',
-      text: emailChanged 
-        ? 'Đã lưu! Email mới cần xác thực.' 
-        : 'Đã lưu thay đổi thành công!'
-    })
-    setShowToast(true)
-
-    // Auto-hide toast after 5s
-    const timeout = setTimeout(() => {
-      setShowToast(false)
-      setPendingChanges(null)
-    }, 5000)
-    setUndoTimeout(timeout)
-  }
-
-  const handleUndo = () => {
-    if (pendingChanges && onUpdate) {
-      onUpdate(pendingChanges.previous)
-      reset(pendingChanges.previous)
-      clearTimeout(undoTimeout)
-      setShowToast(false)
-      setPendingChanges(null)
-      
-      setToastMessage({
-        type: 'info',
-        text: 'Đã hoàn tác thay đổi'
-      })
-      setShowToast(true)
-      setTimeout(() => setShowToast(false), 3000)
+  const handleChange = (e) => {
+    const { name, value } = e.target
+    setFormData(prev => ({ ...prev, [name]: value }))
+    // Clear error when user types
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }))
     }
   }
 
-  const handleCancel = () => {
-    reset()
-    setIsEditing(false)
+  const validate = () => {
+    const newErrors = {}
+
+    if (!formData.firstName.trim()) {
+      newErrors.firstName = 'Vui lòng nhập tên'
+    }
+
+    if (!formData.lastName.trim()) {
+      newErrors.lastName = 'Vui lòng nhập họ'
+    }
+
+    if (!formData.email.trim()) {
+      newErrors.email = 'Vui lòng nhập email'
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      newErrors.email = 'Email không hợp lệ'
+    }
+
+    if (formData.phone && !/^[0-9]{10,11}$/.test(formData.phone.replace(/\s/g, ''))) {
+      newErrors.phone = 'Số điện thoại không hợp lệ'
+    }
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
   }
 
-  const handleAvatarChange = (newAvatar) => {
-    if (onUpdate) {
-      onUpdate({ ...user, avatar: newAvatar })
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+
+    if (!validate()) return
+
+    try {
+      setSaving(true)
+      await onUpdate(formData)
+      alert('Cập nhật thông tin thành công!')
+    } catch (error) {
+      console.error('Error saving:', error)
+      alert('Cập nhật thất bại. Vui lòng thử lại.')
+    } finally {
+      setSaving(false)
     }
-    setShowAvatarModal(false)
-    
-    setToastMessage({
-      type: 'success',
-      text: 'Đã cập nhật ảnh đại diện!'
-    })
-    setShowToast(true)
-    setTimeout(() => setShowToast(false), 3000)
   }
 
   return (
-    <>
-      <form onSubmit={handleSubmit(onSubmit)} className="profile-form">
-        {/* Avatar Section */}
-        <div className="form-section avatar-section">
-          <div className="avatar-wrapper">
-            <img 
-              src={user.avatar} 
-              alt={`${user.firstName} ${user.lastName}`}
-              className="profile-avatar"
-            />
-            <button
-              type="button"
-              onClick={() => setShowAvatarModal(true)}
-              className="avatar-upload-btn"
-              aria-label="Thay đổi ảnh đại diện"
-            >
-              <Camera size={18} />
-            </button>
-          </div>
-          <div className="avatar-info">
-            <h3>Ảnh đại diện</h3>
-            <p>Kích thước tối đa: 2MB. Định dạng: JPG, PNG</p>
-          </div>
-        </div>
-
-        {/* Name Fields */}
-        <div className="form-row">
-          <div className="form-field">
-            <label htmlFor="firstName" className="form-label">
-              Họ <span className="required">*</span>
-            </label>
-            <input
-              id="firstName"
-              type="text"
-              className={`form-input ${errors.firstName ? 'error' : ''}`}
-              disabled={!isEditing}
-              {...register('firstName')}
-            />
-            {errors.firstName && (
-              <span className="error-message">
-                <AlertCircle size={14} />
-                {errors.firstName.message}
-              </span>
-            )}
-          </div>
-
-          <div className="form-field">
-            <label htmlFor="lastName" className="form-label">
-              Tên <span className="required">*</span>
-            </label>
-            <input
-              id="lastName"
-              type="text"
-              className={`form-input ${errors.lastName ? 'error' : ''}`}
-              disabled={!isEditing}
-              {...register('lastName')}
-            />
-            {errors.lastName && (
-              <span className="error-message">
-                <AlertCircle size={14} />
-                {errors.lastName.message}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Email Field */}
-        <div className="form-field">
-          <label htmlFor="email" className="form-label">
-            Email <span className="required">*</span>
-            {user.emailVerified && !emailChanged && (
-              <span className="verified-badge">
-                <CheckCircle size={14} />
-                Đã xác thực
-              </span>
-            )}
-            {emailChanged && (
-              <span className="pending-badge">
-                <AlertCircle size={14} />
-                Cần xác thực
-              </span>
-            )}
+    <form onSubmit={handleSubmit} className="profile-form">
+      <div className="form-row">
+        <div className="form-group">
+          <label htmlFor="firstName" className="form-label">
+            Tên <span className="required">*</span>
           </label>
           <input
-            id="email"
-            type="email"
-            className={`form-input ${errors.email ? 'error' : ''}`}
-            disabled={!isEditing}
-            {...register('email')}
+            id="firstName"
+            name="firstName"
+            type="text"
+            value={formData.firstName}
+            onChange={handleChange}
+            className={`form-input ${errors.firstName ? 'error' : ''}`}
           />
-          {errors.email && (
-            <span className="error-message">
-              <AlertCircle size={14} />
-              {errors.email.message}
-            </span>
-          )}
-          {emailChanged && isEditing && (
-            <p className="field-hint warning">
-              ⚠️ Thay đổi email sẽ yêu cầu xác thực lại
-            </p>
-          )}
+          {errors.firstName && <p className="form-error">{errors.firstName}</p>}
         </div>
 
-        {/* Phone Field */}
-        <div className="form-field">
-          <label htmlFor="phone" className="form-label">
-            Số điện thoại
+        <div className="form-group">
+          <label htmlFor="lastName" className="form-label">
+            Họ <span className="required">*</span>
           </label>
           <input
-            id="phone"
-            type="tel"
-            className={`form-input ${errors.phone ? 'error' : ''}`}
-            placeholder="0901234567"
-            disabled={!isEditing}
-            {...register('phone')}
+            id="lastName"
+            name="lastName"
+            type="text"
+            value={formData.lastName}
+            onChange={handleChange}
+            className={`form-input ${errors.lastName ? 'error' : ''}`}
           />
-          {errors.phone && (
-            <span className="error-message">
-              <AlertCircle size={14} />
-              {errors.phone.message}
-            </span>
-          )}
-          <p className="field-hint">Định dạng: 0XXXXXXXXX hoặc +84XXXXXXXXX</p>
+          {errors.lastName && <p className="form-error">{errors.lastName}</p>}
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="email" className="form-label">
+          Email <span className="required">*</span>
+        </label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          value={formData.email}
+          onChange={handleChange}
+          className={`form-input ${errors.email ? 'error' : ''}`}
+        />
+        {errors.email && <p className="form-error">{errors.email}</p>}
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="phone" className="form-label">
+          Số điện thoại
+        </label>
+        <input
+          id="phone"
+          name="phone"
+          type="tel"
+          value={formData.phone}
+          onChange={handleChange}
+          className={`form-input ${errors.phone ? 'error' : ''}`}
+          placeholder="0912345678"
+        />
+        {errors.phone && <p className="form-error">{errors.phone}</p>}
+      </div>
+
+      <div className="form-row">
+        <div className="form-group">
+          <label htmlFor="dateOfBirth" className="form-label">
+            Ngày sinh
+          </label>
+          <input
+            id="dateOfBirth"
+            name="dateOfBirth"
+            type="date"
+            value={formData.dateOfBirth}
+            onChange={handleChange}
+            className="form-input"
+          />
         </div>
 
-        {/* Date of Birth & Gender */}
-        <div className="form-row">
-          <div className="form-field">
-            <label htmlFor="dateOfBirth" className="form-label">
-              Ngày sinh
-            </label>
-            <input
-              id="dateOfBirth"
-              type="date"
-              className={`form-input ${errors.dateOfBirth ? 'error' : ''}`}
-              disabled={!isEditing}
-              {...register('dateOfBirth')}
-            />
-            {errors.dateOfBirth && (
-              <span className="error-message">
-                <AlertCircle size={14} />
-                {errors.dateOfBirth.message}
-              </span>
-            )}
-          </div>
-
-          <div className="form-field">
-            <label htmlFor="gender" className="form-label">
-              Giới tính
-            </label>
-            <select
-              id="gender"
-              className="form-input form-select"
-              disabled={!isEditing}
-              {...register('gender')}
-            >
-              <option value="">Không muốn chia sẻ</option>
-              <option value="male">Nam</option>
-              <option value="female">Nữ</option>
-              <option value="other">Khác</option>
-            </select>
-          </div>
+        <div className="form-group">
+          <label htmlFor="gender" className="form-label">
+            Giới tính
+          </label>
+          <select
+            id="gender"
+            name="gender"
+            value={formData.gender}
+            onChange={handleChange}
+            className="form-input"
+          >
+            <option value="">Chọn giới tính</option>
+            <option value="male">Nam</option>
+            <option value="female">Nữ</option>
+            <option value="other">Khác</option>
+          </select>
         </div>
+      </div>
 
-        {/* Action Buttons */}
-        <div className="form-actions">
-          {!isEditing ? (
-            <button
-              type="button"
-              onClick={() => setIsEditing(true)}
-              className="btn-primary"
-            >
-              Chỉnh sửa thông tin
-            </button>
+      <div className="form-actions">
+        <button type="submit" disabled={saving} className="btn-save">
+          {saving ? (
+            <>
+              <Loader size={18} className="spinner" />
+              Đang lưu...
+            </>
           ) : (
             <>
-              <button
-                type="button"
-                onClick={handleCancel}
-                className="btn-secondary"
-              >
-                <X size={18} />
-                Hủy
-              </button>
-              <button
-                type="submit"
-                disabled={!isDirty || isSaving}
-                className="btn-primary"
-              >
-                <Save size={18} />
-                {isSaving ? 'Đang lưu...' : 'Lưu thay đổi'}
-              </button>
+              <Save size={18} />
+              Lưu thay đổi
             </>
           )}
-        </div>
-      </form>
+        </button>
+      </div>
 
-      {/* Avatar Upload Modal */}
-      {showAvatarModal && (
-        <AvatarUpload
-          currentAvatar={user.avatar}
-          onSave={handleAvatarChange}
-          onClose={() => setShowAvatarModal(false)}
-        />
-      )}
+      <style jsx>{`
+        .profile-form {
+          display: flex;
+          flex-direction: column;
+          gap: 1.5rem;
+        }
 
-      {/* Toast Notification */}
-      {showToast && (
-        <Toast
-          type={toastMessage.type}
-          message={toastMessage.text}
-          onClose={() => setShowToast(false)}
-          onUndo={pendingChanges ? handleUndo : null}
-        />
-      )}
-    </>
+        .form-row {
+          display: grid;
+          gap: 1rem;
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .form-group {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+
+        .form-label {
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: #18181b;
+        }
+
+        .required {
+          color: #dc2626;
+        }
+
+        .form-input {
+          padding: 0.75rem;
+          border: 1px solid #e4e4e7;
+          border-radius: 0.5rem;
+          font-size: 1rem;
+          transition: all 0.2s;
+          background: white;
+        }
+
+        .form-input:focus {
+          outline: none;
+          border-color: #18181b;
+          box-shadow: 0 0 0 3px rgba(24, 24, 27, 0.1);
+        }
+
+        .form-input.error {
+          border-color: #dc2626;
+        }
+
+        .form-error {
+          font-size: 0.875rem;
+          color: #dc2626;
+          margin: 0;
+        }
+
+        .form-actions {
+          display: flex;
+          justify-content: flex-end;
+          padding-top: 1rem;
+          border-top: 1px solid #f4f4f5;
+        }
+
+        .btn-save {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.75rem 1.5rem;
+          background: #18181b;
+          color: white;
+          border: none;
+          border-radius: 0.5rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .btn-save:hover:not(:disabled) {
+          background: #27272a;
+        }
+
+        .btn-save:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .spinner {
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 640px) {
+          .form-row {
+            grid-template-columns: 1fr;
+          }
+
+          .form-actions {
+            justify-content: stretch;
+          }
+
+          .btn-save {
+            width: 100%;
+            justify-content: center;
+          }
+        }
+      `}</style>
+    </form>
   )
 }

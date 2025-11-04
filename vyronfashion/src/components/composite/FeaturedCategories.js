@@ -1,38 +1,7 @@
 'use client';
 
 import CategoryCard from '@/components/ui/CategoryCard';
-
-// Dữ liệu mẫu - sau này sẽ fetch từ API
-const FEATURED_CATEGORIES = [
-  {
-    id: 1,
-    name: 'Áo Thun',
-    slug: 'ao-thun',
-    image: '/images/categories/tshirts.jpg',
-    productCount: 150
-  },
-  {
-    id: 2,
-    name: 'Quần Jean',
-    slug: 'quan-jean',
-    image: '/images/categories/jeans.jpg',
-    productCount: 89
-  },
-  {
-    id: 3,
-    name: 'Váy Đầm',
-    slug: 'vay-dam',
-    image: '/images/categories/dresses.jpg',
-    productCount: 124
-  },
-  {
-    id: 4,
-    name: 'Phụ Kiện',
-    slug: 'phu-kien',
-    image: '/images/categories/accessories.jpg',
-    productCount: 200
-  }
-];
+import { FEATURED_CATEGORIES } from '@/lib/categories';
 
 export default function FeaturedCategories() {
   return (
@@ -44,7 +13,7 @@ export default function FeaturedCategories() {
             Danh Mục Nổi Bật
           </h2>
           <p className="text-zinc-600 max-w-2xl mx-auto">
-            Khám phá các bộ sưu tập thời trang đa dạng và phong phú của chúng tôi
+            Khám phá thời trang Nam & Nữ với phong cách riêng biệt
           </p>
         </div>
 

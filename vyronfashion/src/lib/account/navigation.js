@@ -1,22 +1,21 @@
-import {
-  User,
-  MapPin,
-  ShoppingBag,
-  RefreshCw,
-  Heart,
+import { 
+  User, 
+  Package, 
+  Heart, 
+  MapPin, 
   CreditCard,
-  Shield,
+  Settings, 
   Bell,
-  Settings,
-  Gift,
+  Shield,
+  RefreshCw,
+  Eye,
   Ruler,
-  Lock,
-  LayoutDashboard,
+  Gift
 } from 'lucide-react'
 
 /**
  * Account navigation structure
- * Organized in groups with nested items
+ * Organized in groups for better UX
  */
 export const accountNavigation = [
   {
@@ -26,22 +25,28 @@ export const accountNavigation = [
       {
         href: '/account/overview',
         label: 'Tổng quan',
-        icon: LayoutDashboard,
-        description: 'Dashboard và thông tin tổng quan',
+        description: 'Xem thông tin tài khoản tổng quan',
+        icon: User
       },
       {
         href: '/account/profile',
         label: 'Thông tin cá nhân',
-        icon: User,
-        description: 'Cập nhật thông tin và avatar',
+        description: 'Quản lý thông tin cá nhân',
+        icon: User
       },
       {
         href: '/account/addresses',
         label: 'Địa chỉ',
-        icon: MapPin,
         description: 'Quản lý địa chỉ giao hàng',
+        icon: MapPin
       },
-    ],
+      {
+        href: '/account/payments',
+        label: 'Thanh toán',
+        description: 'Quản lý phương thức thanh toán',
+        icon: CreditCard
+      }
+    ]
   },
   {
     id: 'orders',
@@ -50,104 +55,176 @@ export const accountNavigation = [
       {
         href: '/account/orders',
         label: 'Đơn hàng của tôi',
-        icon: ShoppingBag,
         description: 'Xem lịch sử đơn hàng',
+        icon: Package
       },
       {
         href: '/account/returns',
-        label: 'Đổi trả hàng',
-        icon: RefreshCw,
-        description: 'Yêu cầu đổi/trả sản phẩm',
-      },
-    ],
+        label: 'Đổi trả & Hoàn tiền',
+        description: 'Quản lý yêu cầu đổi trả',
+        icon: RefreshCw
+      }
+    ]
   },
   {
-    id: 'shopping',
-    title: 'Mua sắm',
+    id: 'preferences',
+    title: 'Sở thích',
     items: [
       {
         href: '/account/wishlist',
-        label: 'Yêu thích',
-        icon: Heart,
-        description: 'Sản phẩm đã lưu',
-      },
-      {
-        href: '/account/credits',
-        label: 'Ví & Voucher',
-        icon: Gift,
-        description: 'Quản lý voucher và store credit',
+        label: 'Danh sách yêu thích',
+        description: 'Sản phẩm bạn đã lưu',
+        icon: Heart
       },
       {
         href: '/account/fit-profile',
-        label: 'Size của tôi',
-        icon: Ruler,
-        description: 'Thông tin số đo để gợi ý size',
+        label: 'Số đo của tôi',
+        description: 'Quản lý thông tin số đo',
+        icon: Ruler
       },
-    ],
+      {
+        href: '/account/credits',
+        label: 'Tín dụng & Voucher',
+        description: 'Xem tín dụng và voucher',
+        icon: Gift
+      }
+    ]
   },
   {
     id: 'settings',
     title: 'Cài đặt',
     items: [
       {
-        href: '/account/payments',
-        label: 'Thanh toán',
-        icon: CreditCard,
-        description: 'Quản lý phương thức thanh toán',
+        href: '/account/notifications',
+        label: 'Thông báo',
+        description: 'Cài đặt thông báo',
+        icon: Bell
+      },
+      {
+        href: '/account/preferences',
+        label: 'Tuỳ chọn',
+        description: 'Tuỳ chỉnh trải nghiệm',
+        icon: Settings
       },
       {
         href: '/account/security',
         label: 'Bảo mật',
-        icon: Shield,
-        description: 'Mật khẩu và 2FA',
-      },
-      {
-        href: '/account/notifications',
-        label: 'Thông báo',
-        icon: Bell,
-        description: 'Tùy chỉnh thông báo',
-      },
-      {
-        href: '/account/preferences',
-        label: 'Tùy chọn',
-        icon: Settings,
-        description: 'Ngôn ngữ, tiền tệ, chủ đề',
+        description: 'Mật khẩu và bảo mật',
+        icon: Shield
       },
       {
         href: '/account/privacy',
         label: 'Quyền riêng tư',
-        icon: Lock,
-        description: 'Tải dữ liệu & xóa tài khoản',
-      },
-    ],
-  },
+        description: 'Quản lý dữ liệu cá nhân',
+        icon: Eye
+      }
+    ]
+  }
 ]
 
 /**
- * Flat list for mobile navigation
- * Only includes top-level items without grouping
+ * Mobile navigation items (simplified, most important items only)
+ * Used for bottom tab navigation on mobile devices
  */
-export const mobileNavItems = accountNavigation.flatMap(group => group.items)
+export const mobileNavItems = [
+  {
+    href: '/account/overview',
+    label: 'Tổng quan',
+    icon: User
+  },
+  {
+    href: '/account/orders',
+    label: 'Đơn hàng',
+    icon: Package
+  },
+  {
+    href: '/account/wishlist',
+    label: 'Yêu thích',
+    icon: Heart
+  },
+  {
+    href: '/account/profile',
+    label: 'Hồ sơ',
+    icon: Settings
+  }
+]
 
 /**
- * Get navigation item by href
+ * Check if a navigation item is active based on current pathname
+ * @param {string} itemHref - The href of the navigation item
+ * @param {string} pathname - The current pathname
+ * @returns {boolean} - Whether the item is active
  */
-export function getNavItemByHref(href) {
-  return mobileNavItems.find(item => item.href === href)
-}
-
-/**
- * Check if a path is active
- * Supports exact match and nested routes
- */
-export function isNavItemActive(itemHref, currentPath) {
-  if (itemHref === currentPath) return true
+export function isNavItemActive(itemHref, pathname) {
+  if (!pathname) return false
   
-  // Check if current path is a nested route under this item
-  // e.g., /account/orders is active for /account/orders/123
-  if (itemHref !== '/account/overview' && currentPath.startsWith(itemHref)) {
+  // Exact match for overview page
+  if (itemHref === '/account/overview' && pathname === '/account') {
+    return true
+  }
+  
+  // Exact match
+  if (itemHref === pathname) {
+    return true
+  }
+  
+  // Nested route match (e.g., /account/orders/123 matches /account/orders)
+  if (pathname.startsWith(itemHref + '/')) {
     return true
   }
   
   return false
+}
+
+/**
+ * Get the current navigation item based on pathname
+ * @param {string} pathname - The current pathname
+ * @returns {object|null} - The active navigation item or null
+ */
+export function getActiveNavItem(pathname) {
+  for (const group of accountNavigation) {
+    for (const item of group.items) {
+      if (isNavItemActive(item.href, pathname)) {
+        return item
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Get all navigation items as a flat array
+ * @returns {array} - All navigation items
+ */
+export function getAllNavItems() {
+  return accountNavigation.flatMap(group => group.items)
+}
+
+/**
+ * Get a navigation item by its href
+ * @param {string} href - The href to search for
+ * @returns {object|null} - The navigation item or null
+ */
+export function getNavItemByHref(href) {
+  if (!href) return null
+  
+  for (const group of accountNavigation) {
+    for (const item of group.items) {
+      // Exact match
+      if (item.href === href) {
+        return item
+      }
+      // Nested route match (e.g., /account/orders/123 should return orders item)
+      if (href.startsWith(item.href + '/')) {
+        return item
+      }
+    }
+  }
+  
+  // Handle /account root path
+  if (href === '/account') {
+    return accountNavigation[0].items.find(item => item.href === '/account/overview')
+  }
+  
+  return null
 }
