@@ -1,5 +1,3 @@
-'use client'
-
 /**
  * Admin Dashboard Page - VyronFashion
  * MVP Dashboard with KPIs, Charts, and Quick Actions

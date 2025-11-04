@@ -1,0 +1,70 @@
+/**
+ * Admin Layout Isolation
+ * Đảm bảo admin layout không bị ảnh hưởng bởi các style của trang chủ
+ */
+
+/* Force admin to be full viewport and isolated */
+.admin-root.admin-layout {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 999 !important;
+  overflow: hidden !important;
+  background-color: var(--neutral-50) !important;
+}
+
+/* Reset any inherited styles from main site */
+.admin-root * {
+  box-sizing: border-box;
+}
+
+/* Ensure sidebar is always visible above everything */
+.admin-root .admin-sidebar {
+  z-index: 1000 !important;
+}
+
+/* Ensure header is always visible above content */
+.admin-root .admin-header {
+  z-index: 1000 !important;
+  position: sticky !important;
+  top: 0 !important;
+}
+
+/* Overlay for mobile sidebar */
+.admin-root .admin-overlay {
+  z-index: 999 !important;
+}
+
+/* Main content scrollable area */
+.admin-root .admin-main {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent body scroll when admin is open */
+body:has(.admin-root) {
+  overflow: hidden;
+}
+
+/* Mobile specific fixes */
+@media (max-width: 1023px) {
+  .admin-root .admin-sidebar {
+    box-shadow: var(--shadow-xl) !important;
+  }
+  
+  .admin-root .admin-overlay.show {
+    display: block !important;
+  }
+}
+
+/* Desktop sidebar shadow for better separation */
+@media (min-width: 1024px) {
+  .admin-root .admin-sidebar {
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
+  }
+}
