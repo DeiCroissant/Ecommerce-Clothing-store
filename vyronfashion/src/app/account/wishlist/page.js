@@ -5,11 +5,28 @@ import { PageHeader, EmptyState, LoadingSkeleton } from '@/components/account'
 import { WishlistGrid } from '@/features/wishlist/components/WishlistGrid'
 import { WishlistStats } from '@/features/wishlist/components/WishlistStats'
 import { Heart } from 'lucide-react'
-import { mockWishlist } from '@/lib/mockWishlistData'
+import * as wishlistAPI from '@/lib/api/wishlist'
+import * as productAPI from '@/lib/api/products'
 
 export default function WishlistPage() {
   const [wishlist, setWishlist] = useState([])
   const [loading, setLoading] = useState(true)
+
+  // Lấy user ID từ localStorage
+  const getCurrentUserId = () => {
+    if (typeof window !== 'undefined') {
+      const userStr = localStorage.getItem('user')
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr)
+          return user.id || user._id
+        } catch (e) {
+          return null
+        }
+      }
+    }
+    return null
+  }
 
   useEffect(() => {
     fetchWishlist()
@@ -18,19 +35,39 @@ export default function WishlistPage() {
   const fetchWishlist = async () => {
     try {
       setLoading(true)
-      // TODO: Replace with actual API call
-      setTimeout(() => {
-        setWishlist(mockWishlist)
+      const userId = getCurrentUserId()
+      
+      if (!userId) {
+        setWishlist([])
         setLoading(false)
-      }, 500)
+        return
+      }
+
+      // Lấy danh sách sản phẩm trong wishlist
+      const response = await wishlistAPI.getWishlistProducts(userId)
+      setWishlist(response.products || [])
     } catch (error) {
       console.error('Error fetching wishlist:', error)
+      setWishlist([])
+    } finally {
       setLoading(false)
     }
   }
 
-  const handleRemoveItem = (itemId) => {
-    setWishlist(wishlist.filter(item => item.id !== itemId))
+  const handleRemoveItem = async (productId) => {
+    const userId = getCurrentUserId()
+    if (!userId) return
+
+    try {
+      // Gọi API để xóa khỏi wishlist
+      await wishlistAPI.toggleWishlist(productId, userId)
+      
+      // Reload wishlist
+      await fetchWishlist()
+    } catch (error) {
+      console.error('Error removing item from wishlist:', error)
+      alert('Có lỗi xảy ra khi xóa sản phẩm khỏi yêu thích')
+    }
   }
 
   if (loading) {

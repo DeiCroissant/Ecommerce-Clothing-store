@@ -8,51 +8,119 @@ export default function ProductGallery({ images, productName }) {
   const [selectedImage, setSelectedImage] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
 
+  // Normalize images - đảm bảo format đúng
+  const normalizedImages = images.map((img, index) => {
+    if (typeof img === 'string') {
+      return { url: img, alt: `${productName} - Ảnh ${index + 1}` };
+    }
+    return {
+      url: img.url || img.src || '',
+      alt: img.alt || `${productName} - Ảnh ${index + 1}`
+    };
+  }).filter(img => img.url && img.url.trim() !== ''); // Lọc bỏ images không có URL
+  
+  // Check if image is base64 (data:image/...)
+  const isBase64Image = (url) => {
+    return url && url.startsWith('data:image/');
+  };
+
+  // Fallback nếu không có images
+  if (normalizedImages.length === 0) {
+    return (
+      <div className="relative aspect-[3/4] bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center">
+        <p className="text-gray-400">Không có hình ảnh</p>
+      </div>
+    );
+  }
+
   const handlePrevious = () => {
-    setSelectedImage((prev) => (prev === 0 ? images.length - 1 : prev - 1));
+    setSelectedImage((prev) => (prev === 0 ? normalizedImages.length - 1 : prev - 1));
   };
 
   const handleNext = () => {
-    setSelectedImage((prev) => (prev === images.length - 1 ? 0 : prev + 1));
+    setSelectedImage((prev) => (prev === normalizedImages.length - 1 ? 0 : prev + 1));
   };
 
   return (
     <div className="flex gap-4">
       {/* Thumbnail Column - Desktop */}
       <div className="hidden md:flex flex-col gap-2 w-20">
-        {images.map((image, index) => (
-          <button
-            key={index}
-            onClick={() => setSelectedImage(index)}
-            className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${
-              selectedImage === index
-                ? 'border-blue-600 shadow-md'
-                : 'border-gray-200 hover:border-gray-300'
-            }`}
-          >
-            <Image
-              src={image.url}
-              alt={`${productName} - Ảnh ${index + 1}`}
-              fill
-              className="object-cover"
-              sizes="80px"
-            />
-          </button>
-        ))}
+        {normalizedImages.map((image, index) => {
+          // Kiểm tra URL có hợp lệ không (bao gồm base64)
+          const isValidUrl = image.url && (
+            image.url.startsWith('/') || 
+            image.url.startsWith('http') || 
+            isBase64Image(image.url)
+          );
+          
+          return (
+            <button
+              key={index}
+              onClick={() => setSelectedImage(index)}
+              className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${
+                selectedImage === index
+                  ? 'border-blue-600 shadow-md'
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              {isValidUrl ? (
+                isBase64Image(image.url) ? (
+                  <img
+                    src={image.url}
+                    alt={image.alt}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <Image
+                    src={image.url}
+                    alt={image.alt}
+                    fill
+                    className="object-cover"
+                    sizes="80px"
+                    unoptimized={image.url.startsWith('http') && !image.url.includes('localhost')}
+                  />
+                )
+              ) : (
+                <div className="w-full h-full bg-gray-200 flex items-center justify-center text-gray-400 text-xs">
+                  No image
+                </div>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Main Gallery */}
       <div className="flex-1">
         {/* Main Image */}
         <div className="relative aspect-[3/4] bg-gray-100 rounded-lg overflow-hidden group">
-          <Image
-            src={images[selectedImage].url}
-            alt={images[selectedImage].alt}
-            fill
-            className="object-cover"
-            priority
-            sizes="(max-width: 768px) 100vw, 58vw"
-          />
+          {normalizedImages[selectedImage] && (
+            (normalizedImages[selectedImage].url.startsWith('/') || 
+             normalizedImages[selectedImage].url.startsWith('http') || 
+             isBase64Image(normalizedImages[selectedImage].url)) ? (
+              isBase64Image(normalizedImages[selectedImage].url) ? (
+                <img
+                  src={normalizedImages[selectedImage].url}
+                  alt={normalizedImages[selectedImage].alt}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <Image
+                  src={normalizedImages[selectedImage].url}
+                  alt={normalizedImages[selectedImage].alt}
+                  fill
+                  className="object-cover"
+                  priority
+                  sizes="(max-width: 768px) 100vw, 58vw"
+                  unoptimized={normalizedImages[selectedImage].url.startsWith('http') && !normalizedImages[selectedImage].url.includes('localhost')}
+                />
+              )
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-gray-400">
+                Không có hình ảnh
+              </div>
+            )
+          )}
 
           {/* Zoom Button */}
           <button
@@ -63,7 +131,7 @@ export default function ProductGallery({ images, productName }) {
           </button>
 
           {/* Navigation Arrows */}
-          {images.length > 1 && (
+          {normalizedImages.length > 1 && (
             <>
               <button
                 onClick={handlePrevious}
@@ -82,31 +150,52 @@ export default function ProductGallery({ images, productName }) {
 
           {/* Image Counter */}
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-sm text-white px-3 py-1 rounded-full text-sm">
-            {selectedImage + 1} / {images.length}
+            {selectedImage + 1} / {normalizedImages.length}
           </div>
         </div>
 
         {/* Thumbnail Row - Mobile */}
         <div className="md:hidden flex gap-2 mt-4 overflow-x-auto pb-2 scrollbar-hide">
-          {images.map((image, index) => (
-            <button
-              key={index}
-              onClick={() => setSelectedImage(index)}
-              className={`relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
-                selectedImage === index
-                  ? 'border-blue-600 shadow-md'
-                  : 'border-gray-200'
-              }`}
-            >
-              <Image
-                src={image.url}
-                alt={`${productName} - Ảnh ${index + 1}`}
-                fill
-                className="object-cover"
-                sizes="64px"
-              />
-            </button>
-          ))}
+          {normalizedImages.map((image, index) => {
+            const isValidUrl = image.url && (
+              image.url.startsWith('/') || 
+              image.url.startsWith('http') || 
+              isBase64Image(image.url)
+            );
+            
+            return (
+              <button
+                key={index}
+                onClick={() => setSelectedImage(index)}
+                className={`relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
+                  selectedImage === index
+                    ? 'border-blue-600 shadow-md'
+                    : 'border-gray-200'
+                }`}
+              >
+                {isValidUrl ? (
+                  isBase64Image(image.url) ? (
+                    <img
+                      src={image.url}
+                      alt={image.alt}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <Image
+                      src={image.url}
+                      alt={image.alt}
+                      fill
+                      className="object-cover"
+                      sizes="64px"
+                      unoptimized={image.url.startsWith('http') && !image.url.includes('localhost')}
+                    />
+                  )
+                ) : (
+                  <div className="w-full h-full bg-gray-200" />
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -123,13 +212,32 @@ export default function ProductGallery({ images, productName }) {
             ×
           </button>
           <div className="relative w-full h-full max-w-5xl max-h-[90vh]">
-            <Image
-              src={images[selectedImage].url}
-              alt={images[selectedImage].alt}
-              fill
-              className="object-contain"
-              sizes="100vw"
-            />
+            {normalizedImages[selectedImage] && (
+              (normalizedImages[selectedImage].url.startsWith('/') || 
+               normalizedImages[selectedImage].url.startsWith('http') || 
+               isBase64Image(normalizedImages[selectedImage].url)) ? (
+                isBase64Image(normalizedImages[selectedImage].url) ? (
+                  <img
+                    src={normalizedImages[selectedImage].url}
+                    alt={normalizedImages[selectedImage].alt}
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <Image
+                    src={normalizedImages[selectedImage].url}
+                    alt={normalizedImages[selectedImage].alt}
+                    fill
+                    className="object-contain"
+                    sizes="100vw"
+                    unoptimized={normalizedImages[selectedImage].url.startsWith('http') && !normalizedImages[selectedImage].url.includes('localhost')}
+                  />
+                )
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-white">
+                  Không có hình ảnh
+                </div>
+              )
+            )}
           </div>
         </div>
       )}

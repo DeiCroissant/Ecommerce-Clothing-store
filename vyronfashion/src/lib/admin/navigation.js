@@ -43,7 +43,7 @@ export const adminNavigation = [
     items: [
       {
         href: '/admin',
-        label: 'Dashboard',
+        label: 'Bảng điều khiển',
         description: 'Tổng quan và thống kê',
         icon: LayoutDashboard
       }
@@ -66,7 +66,7 @@ export const adminNavigation = [
         icon: PackagePlus
       },
       {
-        href: '/admin/categories',
+        href: '/admin/products/categories',
         label: 'Danh mục',
         description: 'Quản lý danh mục sản phẩm',
         icon: FolderTree
@@ -130,7 +130,7 @@ export const adminNavigation = [
       {
         href: '/admin/campaigns',
         label: 'Chiến dịch',
-        description: 'Campaigns và promotions',
+        description: 'Chiến dịch và khuyến mãi',
         icon: Megaphone
       }
     ]
@@ -202,7 +202,7 @@ export const adminNavigation = [
       {
         href: '/admin/settings/permissions',
         label: 'Phân quyền',
-        description: 'Roles & Permissions',
+        description: 'Vai trò & Phân quyền',
         icon: Key,
         requiresSuper: true // Only Super Admin can see
       }
@@ -236,7 +236,7 @@ export function isAdminNavItemActive(itemHref, currentPath) {
  */
 export function getAdminBreadcrumbs(pathname) {
   const breadcrumbs = [
-    { label: 'Dashboard', href: '/admin' }
+    { label: 'Bảng điều khiển', href: '/admin' }
   ]
 
   if (pathname === '/admin') {

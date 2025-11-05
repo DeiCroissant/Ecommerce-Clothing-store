@@ -106,19 +106,34 @@ export default function CategoryPage({ params }) {
   const fetchProducts = async () => {
     setIsLoading(true);
 
-    // Mock API call - replace with real API
-    await new Promise(resolve => setTimeout(resolve, 500));
+    try {
+      // Import product API
+      const productAPI = await import('@/lib/api/products');
+      
+      // Gọi API với category slug
+      const response = await productAPI.getProducts({
+        category_slug: slug,
+        status: 'active',
+        page: currentPage,
+        limit: 24,
+        sort: currentSort
+      });
 
-    // Mock data
-    const mockProducts = generateMockProducts(24);
-    const mockFilterOptions = generateMockFilterOptions();
-
-    setProducts(mockProducts);
-    setTotalProducts(mockProducts.length);
-    setFilterOptions(mockFilterOptions);
-    setHasMore(currentPage < 3); // Mock pagination
-
-    setIsLoading(false);
+      setProducts(response.products || []);
+      setTotalProducts(response.total || 0);
+      setHasMore(currentPage < response.totalPages);
+      
+      // Mock filter options (có thể tạo API riêng sau)
+      const mockFilterOptions = generateMockFilterOptions();
+      setFilterOptions(mockFilterOptions);
+    } catch (error) {
+      console.error('Error fetching products:', error);
+      setProducts([]);
+      setTotalProducts(0);
+      setHasMore(false);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Update URL when filters change
@@ -236,7 +251,7 @@ export default function CategoryPage({ params }) {
                 activeFilters={activeFilters}
                 onRemoveFilter={handleRemoveFilter}
                 onClearFilters={handleClearFilters}
-                recommendations={generateMockProducts(4)}
+                recommendations={products.slice(0, 4)}
               />
             ) : (
               <>

@@ -16,21 +16,26 @@ export default function AdminLayout({ children }) {
   const router = useRouter()
   const pathname = usePathname()
 
-  // Check authorization
+  // Kiểm tra quyền truy cập - chỉ dành cho admin
   useEffect(() => {
     try {
       const userLS = localStorage.getItem('user')
       if (!userLS) {
+        // Không có thông tin user, chuyển về trang chủ
         router.replace('/')
         return
       }
       const user = JSON.parse(userLS)
+      // Chỉ cho phép role 'admin' truy cập
       if (user?.role?.toLowerCase() !== 'admin') {
+        // User không phải admin, chuyển về trang chủ
         router.replace('/')
         return
       }
+      // User là admin, cho phép truy cập
       setAuthorized(true)
     } catch {
+      // Lỗi khi parse user data, chuyển về trang chủ
       router.replace('/')
     }
   }, [router])

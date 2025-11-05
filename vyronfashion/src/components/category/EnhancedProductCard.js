@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   StarIcon, 
@@ -11,6 +11,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartIconSolid } from '@heroicons/react/24/solid';
 import Link from 'next/link';
+import * as wishlistAPI from '@/lib/api/wishlist';
 
 /**
  * Enhanced ProductCard Component
@@ -26,23 +27,76 @@ export default function EnhancedProductCard({ product }) {
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [showQuickView, setShowQuickView] = useState(false);
+  const [wishlistCount, setWishlistCount] = useState(product.wishlist_count || 0);
+  
+  // Kiểm tra user đã đăng nhập chưa (tạm thời lấy từ localStorage)
+  const getCurrentUserId = () => {
+    if (typeof window !== 'undefined') {
+      const userStr = localStorage.getItem('user')
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr)
+          return user.id || user._id
+        } catch (e) {
+          return null
+        }
+      }
+    }
+    return null
+  }
+  
+  // Kiểm tra product có trong wishlist không (khi mount)
+  useEffect(() => {
+    const checkWishlist = async () => {
+      const userId = getCurrentUserId()
+      if (!userId) return
+      
+      try {
+        const wishlist = await wishlistAPI.getWishlist(userId)
+        const productInWishlist = wishlist.wishlist?.some(
+          item => (typeof item === 'object' ? item.product_id : item) === product.id
+        )
+        setIsWishlisted(productInWishlist || false)
+      } catch (error) {
+        console.error('Error checking wishlist:', error)
+      }
+    }
+    
+    checkWishlist()
+  }, [product.id])
 
+  // Map từ API format sang format cũ của component
+  const price = product.pricing?.sale || product.pricing?.original || product.price || 0
+  const originalPrice = product.pricing?.original && product.pricing?.sale ? product.pricing.original : product.originalPrice
+  const discount = product.pricing?.discount_percent || product.discount || 0
+  const image = product.image || product.images?.[0] || ''
+  
+  // Xử lý rating: đảm bảo luôn là số, không phải object
+  let rating = 0
+  if (typeof product.rating === 'number') {
+    rating = product.rating
+  } else if (product.rating && typeof product.rating === 'object' && typeof product.rating.average === 'number') {
+    rating = product.rating.average
+  }
+  
+  // Xử lý reviewCount
+  let reviewCount = 0
+  if (typeof product.reviewCount === 'number') {
+    reviewCount = product.reviewCount
+  } else if (product.rating && typeof product.rating === 'object' && typeof product.rating.count === 'number') {
+    reviewCount = product.rating.count
+  }
+  const availableSizes = product.variants?.sizes?.filter(s => s.available).map(s => s.name) || product.availableSizes || ['S', 'M', 'L', 'XL']
+  const availableColors = product.variants?.colors?.filter(c => c.available) || product.availableColors || []
+  const inStock = product.inventory?.in_stock !== false && product.inventory?.quantity > 0
+  
   const {
     id,
     name,
     slug,
-    price,
-    originalPrice,
-    discount,
-    image,
-    rating,
-    reviewCount,
-    isNew,
-    isBestSeller,
-    isAiPick,
-    availableSizes = ['S', 'M', 'L', 'XL'],
-    availableColors = [],
-    inStock = true
+    isNew = false,
+    isBestSeller = false,
+    isAiPick = false
   } = product;
 
   const handleQuickAdd = () => {
@@ -54,9 +108,28 @@ export default function EnhancedProductCard({ product }) {
     console.log(`Added ${name} - Size: ${selectedSize} to cart`);
   };
 
-  const handleWishlistToggle = (e) => {
+  const handleWishlistToggle = async (e) => {
     e.preventDefault();
-    setIsWishlisted(!isWishlisted);
+    
+    const userId = getCurrentUserId()
+    if (!userId) {
+      alert('Vui lòng đăng nhập để thêm sản phẩm vào yêu thích')
+      return
+    }
+    
+    try {
+      const result = await wishlistAPI.toggleWishlist(product.id, userId)
+      setIsWishlisted(result.is_added)
+      setWishlistCount(result.wishlist_count || 0)
+      
+      // Cập nhật wishlist_count trong product object (nếu component cha cần)
+      if (product.wishlist_count !== undefined) {
+        product.wishlist_count = result.wishlist_count
+      }
+    } catch (error) {
+      console.error('Error toggling wishlist:', error)
+      alert('Có lỗi xảy ra khi cập nhật yêu thích')
+    }
   };
 
   return (

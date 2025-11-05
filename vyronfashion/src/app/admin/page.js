@@ -5,8 +5,11 @@
  * MVP Dashboard with KPIs, Charts, and Quick Actions
  */
 
-import { DollarSign, ShoppingCart, Users, TrendingUp, TrendingDown, ArrowUpRight, Package, Eye } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { DollarSign, ShoppingCart, Users, TrendingUp, TrendingDown, ArrowUpRight, Package, Eye, Folder, Plus, Trash2, Edit } from 'lucide-react'
 import { formatCurrency } from '@/lib/formatCurrency'
+import * as categoryAPI from '@/lib/api/categories'
+import CategoryFormModal from '@/components/admin/categories/CategoryFormModal'
 
 // Mock data
 const dashboardData = {
@@ -200,12 +203,91 @@ function SimpleRevenueChart({ data }) {
 }
 
 export default function AdminDashboardPage() {
+  const [categories, setCategories] = useState([])
+  const [showCategoryForm, setShowCategoryForm] = useState(false)
+  const [selectedCategory, setSelectedCategory] = useState(null)
+  const [loadingCategories, setLoadingCategories] = useState(true)
+
   const currentDate = new Date().toLocaleDateString('vi-VN', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric'
   })
+
+  // Load categories từ API
+  useEffect(() => {
+    const loadCategories = async () => {
+      setLoadingCategories(true)
+      try {
+        const mainCategories = await categoryAPI.getMainCategories()
+        setCategories(mainCategories || [])
+      } catch (error) {
+        console.error('Error loading categories:', error)
+        setCategories([])
+      } finally {
+        setLoadingCategories(false)
+      }
+    }
+
+    loadCategories()
+
+    // Listen for category changes
+    const handleCategoryChange = () => {
+      loadCategories()
+    }
+    window.addEventListener('categoryChanged', handleCategoryChange)
+
+    return () => {
+      window.removeEventListener('categoryChanged', handleCategoryChange)
+    }
+  }, [])
+
+  const handleDeleteCategory = async (categoryId) => {
+    if (confirm('Bạn có chắc chắn muốn xóa danh mục này?')) {
+      try {
+        await categoryAPI.deleteCategory(categoryId)
+        // Reload categories
+        const mainCategories = await categoryAPI.getMainCategories()
+        setCategories(mainCategories || [])
+        
+        // Dispatch event để Header cập nhật
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('categoryChanged'))
+        }
+      } catch (error) {
+        console.error('Error deleting category:', error)
+        alert('Lỗi khi xóa danh mục: ' + error.message)
+      }
+    }
+  }
+
+  const handleSaveCategory = async (categoryData) => {
+    try {
+      if (selectedCategory) {
+        // Cập nhật danh mục
+        await categoryAPI.updateCategory(selectedCategory.id, categoryData)
+      } else {
+        // Thêm danh mục mới
+        await categoryAPI.createCategory(categoryData)
+      }
+      
+      // Reload categories từ API
+      const mainCategories = await categoryAPI.getMainCategories()
+      setCategories(mainCategories || [])
+      
+      setShowCategoryForm(false)
+      setSelectedCategory(null)
+      
+      // Dispatch event để Header cập nhật
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('categoryChanged'))
+      }
+    } catch (error) {
+      console.error('Error saving category:', error)
+      alert('Lỗi khi lưu danh mục: ' + error.message)
+    }
+  }
 
   return (
     <div>
@@ -218,7 +300,7 @@ export default function AdminDashboardPage() {
           marginBottom: 'var(--space-1)',
           fontFamily: 'var(--font-display)'
         }}>
-          Dashboard
+          Bảng điều khiển
         </h1>
         <p style={{
           fontSize: 'var(--text-sm)',
@@ -403,6 +485,177 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Categories Management Section */}
+      <div className="admin-grid admin-grid-cols-1" style={{ marginBottom: 'var(--space-8)' }}>
+        <div className="admin-card">
+          <div className="admin-card-header">
+            <div>
+              <h2 className="admin-card-title">Quản lý Danh mục</h2>
+              <p className="admin-card-description">
+                Quản lý danh mục sản phẩm - {categories.length} danh mục
+              </p>
+            </div>
+            <button
+              className="admin-btn admin-btn-primary admin-btn-sm"
+              onClick={() => {
+                setSelectedCategory(null)
+                setShowCategoryForm(true)
+              }}
+            >
+              <Plus size={16} />
+              <span>Thêm danh mục</span>
+            </button>
+          </div>
+          <div className="admin-table-container" style={{ border: 'none' }}>
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Danh mục</th>
+                  <th>Slug</th>
+                  <th className="admin-table-cell-center">Số sản phẩm</th>
+                  <th className="admin-table-cell-center">Trạng thái</th>
+                  <th className="admin-table-cell-center">Hành động</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingCategories ? (
+                  <tr>
+                    <td colSpan="5" style={{ 
+                      textAlign: 'center', 
+                      padding: 'var(--space-8)',
+                      color: 'var(--text-tertiary)'
+                    }}>
+                      Đang tải...
+                    </td>
+                  </tr>
+                ) : categories.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" style={{ 
+                      textAlign: 'center', 
+                      padding: 'var(--space-8)',
+                      color: 'var(--text-tertiary)'
+                    }}>
+                      Chưa có danh mục nào. Hãy thêm danh mục đầu tiên!
+                    </td>
+                  </tr>
+                ) : (
+                  categories.map((category) => (
+                    <tr key={category.id}>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                          <div style={{
+                            width: '40px',
+                            height: '40px',
+                            borderRadius: 'var(--radius-base)',
+                            backgroundColor: 'var(--neutral-100)',
+                            backgroundImage: category.image ? `url(${category.image})` : 'none',
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}>
+                            {!category.image && (
+                              <Folder size={20} style={{ color: 'var(--text-tertiary)' }} />
+                            )}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 'var(--font-semibold)', marginBottom: '2px' }}>
+                              {category.name}
+                            </div>
+                            <div style={{ 
+                              fontSize: 'var(--text-xs)', 
+                              color: 'var(--text-tertiary)',
+                              maxWidth: '300px',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {category.description}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <span style={{ 
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 'var(--text-xs)',
+                          color: 'var(--text-secondary)'
+                        }}>
+                          {category.slug}
+                        </span>
+                      </td>
+                      <td className="admin-table-cell-center">
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                          <Package size={14} style={{ color: 'var(--text-tertiary)' }} />
+                          <span style={{ fontWeight: 'var(--font-medium)' }}>
+                            {category.product_count}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="admin-table-cell-center">
+                        <span className={`admin-badge ${
+                          category.status === 'active' 
+                            ? 'admin-badge-success' 
+                            : 'admin-badge-secondary'
+                        }`}>
+                          {category.status === 'active' ? 'Đang hoạt động' : 'Ngừng hoạt động'}
+                        </span>
+                      </td>
+                      <td className="admin-table-cell-center">
+                        <div className="admin-table-actions">
+                          <button 
+                            className="admin-btn admin-btn-sm admin-btn-ghost"
+                            title="Chỉnh sửa"
+                            onClick={() => {
+                              setSelectedCategory(category)
+                              setShowCategoryForm(true)
+                            }}
+                          >
+                            <Edit size={16} />
+                          </button>
+                          <button 
+                            className="admin-btn admin-btn-sm admin-btn-ghost"
+                            title="Xóa"
+                            onClick={() => handleDeleteCategory(category.id)}
+                            style={{ color: 'var(--error-600)' }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          {categories.length > 0 && (
+            <div className="admin-card-footer">
+              <button 
+                className="admin-btn admin-btn-ghost admin-btn-sm"
+                onClick={() => window.location.href = '/admin/products/categories'}
+              >
+                Xem tất cả danh mục
+                <ArrowUpRight size={16} />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Category Form Modal */}
+      {showCategoryForm && (
+        <CategoryFormModal
+          category={selectedCategory}
+          onClose={() => {
+            setShowCategoryForm(false)
+            setSelectedCategory(null)
+          }}
+          onSave={handleSaveCategory}
+        />
+      )}
     </div>
   )
 }
