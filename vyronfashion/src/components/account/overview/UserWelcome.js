@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { CheckCircle, XCircle, Award, Calendar } from 'lucide-react'
+import { CheckCircle, XCircle, Award, Calendar, User } from 'lucide-react'
 import { ProfileCompleteness } from './ProfileCompleteness'
 import { format } from 'date-fns'
 import { vi } from 'date-fns/locale'
@@ -27,87 +27,108 @@ export function UserWelcome({ user }) {
   const profileCompleteness = calculateProfileCompleteness(user)
 
   return (
-    <div className="user-welcome-card">
-      <div className="welcome-content">
-        <div className="avatar-section">
-          <Image
-            src={user.avatar || '/images/placeholders/avatar-placeholder.jpg'}
-            alt={user.name}
-            width={80}
-            height={80}
-            className="avatar"
-          />
+    <div className="user-profile-modern">
+      {/* Header Section with Avatar */}
+      <div className="profile-header">
+        <div className="avatar-container">
+          {user.avatar && user.avatar.trim() ? (
+            user.avatar.startsWith('data:image/') || user.avatar.startsWith('http') || user.avatar.startsWith('/') ? (
+              <div className="avatar-wrapper-modern">
+                <Image
+                  src={user.avatar}
+                  alt={user.name}
+                  width={120}
+                  height={120}
+                  className="avatar-modern"
+                  unoptimized={user.avatar.startsWith('data:image/')}
+                />
+              </div>
+            ) : (
+              <div className="avatar-wrapper-modern">
+                <img
+                  src={user.avatar}
+                  alt={user.name}
+                  className="avatar-modern"
+                />
+              </div>
+            )
+          ) : (
+            <div className="avatar-placeholder-modern">
+              <User size={56} />
+            </div>
+          )}
         </div>
-
-        <div className="user-info">
-          <h2 className="user-name">
-            {user.name}
-          </h2>
-          
-          <div className="email-status">
-            <span className="email">{user.email}</span>
+        
+        <div className="profile-header-info">
+          <h2 className="profile-name">{user.name}</h2>
+          <div className="profile-email-row">
+            <span className="profile-email">{user.email}</span>
             {user.emailVerified ? (
-              <span className="badge verified">
+              <span className="badge-modern verified">
                 <CheckCircle size={14} />
                 Đã xác thực
               </span>
             ) : (
-              <span className="badge unverified">
+              <span className="badge-modern unverified">
                 <XCircle size={14} />
                 Chưa xác thực
               </span>
             )}
           </div>
-
-          {/* Thông tin bổ sung từ API */}
-          <div className="user-details">
-            {user.phone && (
-              <div className="detail-item">
-                <span className="label">Số điện thoại:</span>
-                <span className="value">{user.phone}</span>
-              </div>
-            )}
-            {user.address && (
-              <div className="detail-item">
-                <span className="label">Địa chỉ:</span>
-                <span className="value">{user.address}</span>
-              </div>
-            )}
-            <div className="detail-item">
-              <span className="label">Cấp thành viên:</span>
-              <span className="value capitalize">{user.memberLevel || 'Bronze'}</span>
-            </div>
-            <div className="detail-item">
-              <span className="label">Vai trò:</span>
-              <span className="value capitalize">{user.role || 'User'}</span>
-            </div>
-          </div>
-
-          <div className="user-stats">
-            <div className="stat">
-              <Calendar size={16} className="stat-icon" />
-              <div>
-                <span className="label">Thành viên từ</span>
-                <span className="value">
-                  {format(new Date(user.createdAt), 'dd/MM/yyyy', { locale: vi })}
-                </span>
-              </div>
-            </div>
-            <div className="stat">
-              <Award size={16} className="stat-icon" />
-              <div>
-                <span className="label">Cấp độ</span>
-                <span className="value capitalize">{user.memberLevel || 'Bronze'}</span>
-              </div>
-            </div>
-          </div>
-
-          <ProfileCompleteness percentage={profileCompleteness} />
-
-          <Link href="/account/profile" className="edit-profile-btn">
-            Chỉnh sửa hồ sơ
-          </Link>
         </div>
+      </div>
+
+      {/* Modern Table-like Info Section */}
+      <div className="profile-info-table">
+        <div className="info-row">
+          <div className="info-cell">
+            <div className="info-label">Số điện thoại</div>
+            <div className="info-value">{user.phone || 'Chưa cập nhật'}</div>
+          </div>
+          <div className="info-cell">
+            <div className="info-label">Cấp thành viên</div>
+            <div className="info-value">
+              <span className="member-badge">{user.memberLevel || 'Bronze'}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="info-row">
+          <div className="info-cell">
+            <div className="info-label">Vai trò</div>
+            <div className="info-value">
+              <span className="role-badge">{user.role || 'User'}</span>
+            </div>
+          </div>
+          <div className="info-cell">
+            <div className="info-label">Thành viên từ</div>
+            <div className="info-value">
+              <Calendar size={14} className="inline-icon" />
+              {format(new Date(user.createdAt), 'dd/MM/yyyy', { locale: vi })}
+            </div>
+          </div>
+        </div>
+
+        {user.address && (
+          <div className="info-row info-row-full">
+            <div className="info-cell">
+              <div className="info-label">Địa chỉ</div>
+              <div className="info-value">{user.address}</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Profile Completion Section */}
+      <div className="profile-completion-section">
+        <ProfileCompleteness percentage={profileCompleteness} />
+      </div>
+
+      {/* Action Button */}
+      <div className="profile-actions">
+        <Link href="/account/profile" className="edit-btn-modern">
+          Chỉnh sửa hồ sơ
+        </Link>
       </div>
     </div>
   )

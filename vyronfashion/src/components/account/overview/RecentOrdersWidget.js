@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { format } from 'date-fns'
 import { vi } from 'date-fns/locale'
 import { Package, ArrowRight } from 'lucide-react'
-import { orderStatusConfig } from '@/lib/account/mockUserData'
+import { getStatusInfo } from '@/lib/mockOrdersData'
 import { EmptyState } from '@/components/account'
 
 export function RecentOrdersWidget({ orders }) {
@@ -40,7 +40,10 @@ export function RecentOrdersWidget({ orders }) {
 
       <div className="orders-list">
         {orders.map((order) => {
-          const statusConfig = orderStatusConfig[order.status]
+          // Check if order has completed return
+          const hasRefundCompleted = order.hasRefundCompleted || false
+          const displayStatus = (order.status === 'completed' && hasRefundCompleted) ? 'refunded' : order.status
+          const statusInfo = getStatusInfo(displayStatus)
           return (
             <Link
               key={order.id}
@@ -50,19 +53,19 @@ export function RecentOrdersWidget({ orders }) {
               <div className="order-info">
                 <div className="order-id">
                   <Package size={18} />
-                  <span>#{order.id}</span>
+                  <span>#{order.orderNumber || order.id}</span>
                 </div>
                 <div className="order-date">
-                  {format(new Date(order.date), 'dd MMM yyyy', { locale: vi })}
+                  {format(new Date(order.date || order.createdAt), 'dd MMM yyyy', { locale: vi })}
                 </div>
               </div>
 
               <div className="order-status">
                 <span
                   className="status-badge"
-                  style={{ '--status-color': statusConfig.color }}
+                  style={{ '--status-color': statusInfo.color }}
                 >
-                  {statusConfig.label}
+                  {statusInfo.label}
                 </span>
               </div>
 

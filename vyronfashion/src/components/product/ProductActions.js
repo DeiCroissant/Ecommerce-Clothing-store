@@ -5,9 +5,8 @@ import { MinusIcon, PlusIcon, ShoppingCartIcon, BoltIcon } from '@heroicons/reac
 import { HeartIcon } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
 
-export default function ProductActions({ maxStock = 10, onAddToCart, onBuyNow }) {
+export default function ProductActions({ maxStock = 10, onAddToCart, onBuyNow, isWishlisted = false, onWishlistToggle, wishlistLoading = false }) {
   const [quantity, setQuantity] = useState(1);
-  const [isFavorite, setIsFavorite] = useState(false);
 
   const handleDecrease = () => {
     if (quantity > 1) setQuantity(quantity - 1);
@@ -86,16 +85,23 @@ export default function ProductActions({ maxStock = 10, onAddToCart, onBuyNow })
           Mua ngay
         </button>
 
-        {/* Favorite */}
+        {/* Wishlist Button */}
         <button
-          onClick={() => setIsFavorite(!isFavorite)}
-          className="border-2 border-gray-300 p-4 rounded-lg hover:border-red-500 hover:bg-red-50 transition-colors"
-          title={isFavorite ? 'Bỏ yêu thích' : 'Thêm vào yêu thích'}
+          onClick={onWishlistToggle}
+          disabled={wishlistLoading}
+          className={`border-2 p-4 rounded-lg transition-all ${
+            isWishlisted
+              ? 'border-red-500 bg-red-50 text-red-500'
+              : 'border-gray-300 text-gray-600 hover:border-red-500 hover:bg-red-50'
+          } ${wishlistLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+          title={isWishlisted ? 'Bỏ yêu thích' : 'Thêm vào yêu thích'}
         >
-          {isFavorite ? (
+          {wishlistLoading ? (
+            <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          ) : isWishlisted ? (
             <HeartSolid className="w-6 h-6 text-red-500" />
           ) : (
-            <HeartIcon className="w-6 h-6 text-gray-600" />
+            <HeartIcon className="w-6 h-6" />
           )}
         </button>
       </div>

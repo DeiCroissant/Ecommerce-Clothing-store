@@ -1,37 +1,86 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { PageHeader, EmptyState, LoadingSkeleton } from '@/components/account'
 import { ReturnList } from '@/features/returns/components/ReturnList'
 import { ReturnFilters } from '@/features/returns/components/ReturnFilters'
 import { PackageX, Plus } from 'lucide-react'
-import { mockReturns } from '@/lib/mockReturnsData'
+import * as returnsAPI from '@/lib/api/returns'
+
+function getCurrentUserId() {
+  if (typeof window === 'undefined') return null;
+  const userStr = localStorage.getItem('user');
+  if (!userStr) return null;
+  try {
+    const user = JSON.parse(userStr);
+    return user.id || user._id || null;
+  } catch {
+    return null;
+  }
+}
 
 export default function ReturnsPage() {
+  const router = useRouter()
   const [returns, setReturns] = useState([])
   const [filteredReturns, setFilteredReturns] = useState([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('all')
 
   useEffect(() => {
-    fetchReturns()
-  }, [])
+    const userId = getCurrentUserId();
+    if (!userId) {
+      router.push('/');
+      return;
+    }
+    fetchReturns(userId);
+
+    // Listen for return updates
+    const handleReturnsChanged = () => {
+      fetchReturns(userId);
+    };
+
+    window.addEventListener('returnsChanged', handleReturnsChanged);
+    
+    return () => {
+      window.removeEventListener('returnsChanged', handleReturnsChanged);
+    };
+  }, [router])
 
   useEffect(() => {
     filterReturns()
   }, [returns, statusFilter])
 
-  const fetchReturns = async () => {
+  const fetchReturns = async (userId) => {
     try {
       setLoading(true)
-      // TODO: Replace with actual API call
-      setTimeout(() => {
-        setReturns(mockReturns)
-        setLoading(false)
-      }, 500)
+      const response = await returnsAPI.getUserReturns(userId);
+      const returnsData = response.returns || [];
+      
+      // Transform API data to match component expectations
+      const transformedReturns = returnsData.map(ret => ({
+        id: ret.id || ret._id,
+        return_id: ret.id || ret._id,
+        returnNumber: ret.return_number || ret.id,
+        date: ret.created_at || ret.createdAt,
+        status: ret.status || 'pending',
+        amount: ret.refund_amount || 0,
+        products: (ret.items || []).map(item => ({
+          id: item.product_id,
+          name: item.product_name,
+          image: item.product_image,
+          quantity: item.quantity,
+          reason: item.reason
+        })),
+        orderId: ret.order_id
+      }));
+      
+      setReturns(transformedReturns)
     } catch (error) {
       console.error('Error fetching returns:', error)
+      setReturns([])
+    } finally {
       setLoading(false)
     }
   }

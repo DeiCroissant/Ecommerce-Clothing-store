@@ -1,7 +1,7 @@
-from fastapi import FastAPI, HTTPException, status, Path, Response, Query
+from fastapi import FastAPI, HTTPException, status, Path, Response, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
-from app.database import users_collection, categories_collection, products_collection, reviews_collection, orders_collection, cart_collection, close_db
+from app.database import users_collection, categories_collection, products_collection, reviews_collection, orders_collection, cart_collection, addresses_collection, coupons_collection, returns_collection, settings_collection, close_db
 from app.schemas import (
     UserCreate,
     UserLogin,
@@ -9,8 +9,13 @@ from app.schemas import (
     LoginResponse,
     ErrorResponse,
     UserResponse,
+    UserUpdate,
     EmailVerifyRequest,
     EmailVerifyResponse,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
     ResendVerificationRequest,
     ResendVerificationResponse,
     CategoryCreate,
@@ -32,11 +37,52 @@ from app.schemas import (
     OrderResponse,
     OrderListResponse,
     OrderCheckResponse,
+    OrderStatusUpdate,
+    OrderUpdateResponse,
     OrderItem,
+    ShippingAddress,
     ProductVariants,
+    AddressCreate,
+    AddressUpdate,
+    AddressResponse,
+    AddressListResponse,
+    CustomerResponse,
+    CustomerListResponse,
+    CustomerBanUpdate,
+    CustomerRoleUpdate,
+    PromotionEmailRequest,
+    PromotionEmailResponse,
+    CouponCreate,
+    CouponUpdate,
+    CouponResponse,
+    CouponListResponse,
+    CouponValidateRequest,
+    CouponValidateResponse,
+    ReturnCreate,
+    ReturnUpdate,
+    ReturnResponse,
+    ReturnListResponse,
+    DashboardResponse,
+    DashboardKPIMetric,
+    DashboardRevenueData,
+    DashboardPendingOrder,
+    DashboardLowStockProduct,
+    Enable2FARequest,
+    Enable2FAResponse,
+    Disable2FARequest,
+    Disable2FAResponse,
+    Verify2FACodeRequest,
+    Verify2FACodeResponse,
+    ChangePasswordRequest,
+    ChangePasswordResponse,
+    Get2FAStatusResponse,
+    PaymentMethodSetting,
+    ShippingMethodSetting,
+    PaymentSettingsUpdate,
+    PaymentSettingsResponse,
 )
-from app.email_utils import send_verification_email
-from datetime import datetime
+from app.email_utils import send_verification_email, send_reset_password_email, send_promotion_email, send_2fa_code_email
+from datetime import datetime, timedelta
 import bcrypt
 from bson import ObjectId
 import secrets
@@ -89,11 +135,19 @@ def normalize_variants(variants_data):
     normalized_colors = []
     for color in colors:
         if isinstance(color, dict):
+            # Ensure images is always a list
+            images = color.get("images", [])
+            if images is None:
+                images = []
+            elif not isinstance(images, list):
+                images = []
+            
             normalized_colors.append({
                 "name": color.get("name", ""),
                 "slug": color.get("slug", ""),
                 "hex": color.get("hex", "#000000"),
-                "available": color.get("available", True)
+                "available": color.get("available", True),
+                "images": images  # Preserve images array
             })
     
     # Ensure sizes is a list
@@ -200,7 +254,7 @@ async def register(user_data: UserCreate):
         result = await users_collection.insert_one(new_user)
 
         # Gửi email xác minh (nếu cấu hình SMTP đầy đủ)
-        email_sent = await send_verification_email(new_user["email"], new_user["username"], verification_code)
+        email_sent = await send_verification_email(new_user["email"], new_user["username"], verification_code, new_user.get("name"))
 
         # Trả về user (không bao gồm password)
         user_response = UserResponse(
@@ -262,6 +316,13 @@ async def login(credentials: UserLogin):
                 detail="Tên đăng nhập hoặc mật khẩu không đúng"
             )
 
+        # Kiểm tra tài khoản bị khóa
+        if user.get("is_banned", False):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tài khoản của bạn đã bị khóa do vi phạm quy định của hệ thống. Vui lòng liên hệ với chúng tôi để được hỗ trợ."
+            )
+        
         # Nếu password đúng nhưng email chưa verify
         if not user.get("emailVerified", False):
             return LoginResponse(
@@ -270,6 +331,43 @@ async def login(credentials: UserLogin):
                 user=None,
                 needsVerification=True,
                 email=user.get("email")
+            )
+        
+        # Kiểm tra xem user có bật 2FA không
+        if user.get("two_factor_enabled", False):
+            # Tạo mã 2FA (6 số)
+            import random
+            two_factor_code = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+            
+            # Lưu mã 2FA vào database với thời gian hết hạn (10 phút)
+            from datetime import timedelta
+            expires_at = datetime.now() + timedelta(minutes=10)
+            
+            await users_collection.update_one(
+                {"_id": user["_id"]},
+                {"$set": {
+                    "two_factor_code": two_factor_code,
+                    "two_factor_expires": expires_at.isoformat()
+                }}
+            )
+            
+            # Gửi mã 2FA qua email
+            email_sent = await send_2fa_code_email(
+                to_email=user["email"],
+                username=user["username"],
+                code=two_factor_code,
+                name=user.get("name", user["username"])
+            )
+            
+            # Trả về response yêu cầu nhập mã 2FA
+            return LoginResponse(
+                success=False,
+                message="Vui lòng nhập mã 2FA đã được gửi đến email của bạn",
+                user=None,
+                needsVerification=False,
+                email=user.get("email"),
+                needs_2fa=True,
+                username=user["username"]
             )
         
         # Trả về user (không bao gồm password)
@@ -281,7 +379,11 @@ async def login(credentials: UserLogin):
             dateOfBirth=user["dateOfBirth"],
             createdAt=user["createdAt"],
             role=user.get("role", "user"),
-            emailVerified=user.get("emailVerified", False)
+            emailVerified=user.get("emailVerified", False),
+            avatar=user.get("avatar", ""),
+            phone=user.get("phone", ""),
+            address=user.get("address", ""),
+            memberLevel=user.get("memberLevel", "bronze")
         )
         
         return LoginResponse(
@@ -311,8 +413,68 @@ async def get_user_detail(user_id: str = Path(...)):
         dateOfBirth=user["dateOfBirth"],
         createdAt=user["createdAt"],
         role=user.get("role", "user"),
-        emailVerified=user.get("emailVerified", False)
+        emailVerified=user.get("emailVerified", False),
+        avatar=user.get("avatar", ""),
+        phone=user.get("phone", ""),
+        address=user.get("address", ""),
+        memberLevel=user.get("memberLevel", "bronze")
     )
+
+@app.put("/api/user/{user_id}", response_model=UserResponse)
+async def update_user_profile(user_id: str = Path(...), user_data: UserUpdate = None):
+    """
+    Cập nhật thông tin user profile
+    Chỉ cho phép cập nhật phone và avatar
+    """
+    try:
+        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        if not user_data:
+            raise HTTPException(status_code=400, detail="Không có dữ liệu để cập nhật")
+        
+        # Chỉ cho phép cập nhật phone và avatar
+        update_data = {}
+        if user_data.phone is not None:
+            update_data["phone"] = user_data.phone
+        if user_data.avatar is not None:
+            update_data["avatar"] = user_data.avatar
+        
+        if not update_data:
+            raise HTTPException(status_code=400, detail="Không có dữ liệu để cập nhật")
+        
+        update_data["updated_at"] = datetime.now().isoformat()
+        
+        await users_collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": update_data}
+        )
+        
+        # Lấy user đã cập nhật
+        updated_user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        
+        return UserResponse(
+            id=str(updated_user["_id"]),
+            username=updated_user["username"],
+            email=updated_user["email"],
+            name=updated_user["name"],
+            dateOfBirth=updated_user["dateOfBirth"],
+            createdAt=updated_user["createdAt"],
+            role=updated_user.get("role", "user"),
+            emailVerified=updated_user.get("emailVerified", False),
+            avatar=updated_user.get("avatar", ""),
+            phone=updated_user.get("phone", ""),
+            address=updated_user.get("address", ""),
+            memberLevel=updated_user.get("memberLevel", "bronze")
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
 
 
 @app.post("/api/auth/verify-email", response_model=EmailVerifyResponse)
@@ -372,7 +534,7 @@ async def resend_verification(payload: dict):
         print(f"💾 Đã lưu mã vào DB")
 
         # Gửi email xác minh
-        email_sent = await send_verification_email(user["email"], user["username"], verification_code)
+        email_sent = await send_verification_email(user["email"], user["username"], verification_code, user.get("name"))
         
         return {
             "success": True,
@@ -389,6 +551,123 @@ async def resend_verification(payload: dict):
             "success": False,
             "error": f"Lỗi server: {str(e)}"
         }
+
+@app.post("/api/auth/forgot-password", response_model=ForgotPasswordResponse)
+async def forgot_password(request: ForgotPasswordRequest):
+    """Gửi email đặt lại mật khẩu"""
+    try:
+        # Tìm user theo email
+        user = await users_collection.find_one({"email": request.email})
+        
+        # Không tiết lộ nếu email không tồn tại (bảo mật)
+        if not user:
+            return ForgotPasswordResponse(
+                success=True,
+                message="Nếu email tồn tại, chúng tôi đã gửi link đặt lại mật khẩu tới email của bạn.",
+                emailSent=False
+            )
+        
+        # Tạo reset token
+        reset_token = secrets.token_urlsafe(32)
+        expires_at = datetime.now() + timedelta(hours=1)  # Token hết hạn sau 1 giờ
+        
+        # Lưu reset token vào database
+        await users_collection.update_one(
+            {"_id": user["_id"]},
+            {
+                "$set": {
+                    "resetPasswordToken": reset_token,
+                    "resetPasswordExpires": expires_at
+                }
+            }
+        )
+        
+        # Tạo reset URL
+        reset_url = f"http://localhost:3000/reset-password?token={reset_token}"
+        
+        # Gửi email
+        email_sent = await send_reset_password_email(
+            user["email"],
+            user.get("username", "người dùng"),
+            reset_token,
+            reset_url,
+            user.get("name")
+        )
+        
+        return ForgotPasswordResponse(
+            success=True,
+            message="Đã gửi link đặt lại mật khẩu tới email của bạn." if email_sent else "Tạo token thành công. Vui lòng sử dụng token trong response.",
+            emailSent=email_sent,
+            resetToken=None if email_sent else reset_token
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.post("/api/auth/reset-password", response_model=ResetPasswordResponse)
+async def reset_password(request: ResetPasswordRequest):
+    """Đặt lại mật khẩu với token"""
+    try:
+        # Tìm user với token hợp lệ
+        user = await users_collection.find_one({
+            "resetPasswordToken": request.token,
+            "resetPasswordExpires": {"$gt": datetime.now()}
+        })
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Token không hợp lệ hoặc đã hết hạn"
+            )
+        
+        # Validate password không chứa username, tên, ngày sinh
+        pw_lower = request.new_password.lower()
+        name_key = remove_accents(user.get("name", "")).replace(" ", "").lower()
+        username_key = remove_accents(user.get("username", "")).replace(" ", "").lower()
+        dob_str = user.get("dateOfBirth", "").replace("-", "").replace("/", "")
+        
+        if username_key and (pw_lower == username_key or username_key in pw_lower):
+            raise HTTPException(status_code=400, detail="Mật khẩu không được trùng hoặc chứa tên đăng nhập")
+        
+        if name_key and (pw_lower == name_key or name_key in pw_lower):
+            raise HTTPException(status_code=400, detail="Mật khẩu không được trùng hoặc chứa tên cá nhân")
+        
+        if dob_str and dob_str in pw_lower:
+            raise HTTPException(status_code=400, detail="Mật khẩu không được chứa ngày sinh")
+        
+        # Hash password mới
+        hashed_password = bcrypt.hashpw(
+            request.new_password.encode('utf-8'),
+            bcrypt.gensalt()
+        ).decode('utf-8')
+        
+        # Cập nhật password và xóa reset token
+        await users_collection.update_one(
+            {"_id": user["_id"]},
+            {
+                "$set": {"password": hashed_password},
+                "$unset": {
+                    "resetPasswordToken": "",
+                    "resetPasswordExpires": ""
+                }
+            }
+        )
+        
+        return ResetPasswordResponse(
+            success=True,
+            message="Đặt lại mật khẩu thành công. Vui lòng đăng nhập với mật khẩu mới."
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
 
 # ==================== CATEGORY API ENDPOINTS ====================
 
@@ -415,22 +694,39 @@ async def get_categories(parent_id: Optional[str] = Query(None), status: Optiona
             query["status"] = status
         
         print(f"🔍 Query categories with: {query}")
-        cursor = categories_collection.find(query).sort("created_at", -1)
+        # Sort theo created_at tăng dần (tạo trước hiển thị trước) hoặc _id nếu không có created_at
+        cursor = categories_collection.find(query).sort([("created_at", 1), ("_id", 1)])
         categories = await cursor.to_list(length=None)
         
         result = []
         for cat in categories:
-            # Đếm số sản phẩm trong danh mục (TODO: tính từ products collection)
-            product_count = 0
+            cat_id = str(cat["_id"])
+            cat_slug = cat["slug"]
+            
+            # Đếm số danh mục con
+            subcategories_count = await categories_collection.count_documents({"parent_id": cat_id})
+            
+            # Đếm số sản phẩm trong danh mục này và các danh mục con
+            # Lấy tất cả subcategories của category này
+            subcategories = await categories_collection.find({"parent_id": cat_id}).to_list(length=None)
+            subcategory_slugs = [sub["slug"] for sub in subcategories]
+            
+            # Đếm sản phẩm có category.slug trùng với category hoặc subcategories
+            category_slugs = [cat_slug] + subcategory_slugs
+            product_count = await products_collection.count_documents({
+                "category.slug": {"$in": category_slugs},
+                "status": "active"  # Chỉ đếm sản phẩm active
+            })
             
             result.append(CategoryResponse(
-                id=str(cat["_id"]),
+                id=cat_id,
                 name=cat["name"],
-                slug=cat["slug"],
+                slug=cat_slug,
                 description=cat.get("description", ""),
                 parent_id=cat.get("parent_id"),
                 status=cat.get("status", "active"),
                 product_count=product_count,
+                subcategories_count=subcategories_count,
                 created_at=cat.get("created_at"),
                 updated_at=cat.get("updated_at")
             ))
@@ -692,6 +988,8 @@ async def get_products(
             sort_dict = {"pricing.sale": 1}
         elif sort == 'price_desc':
             sort_dict = {"pricing.sale": -1}
+        elif sort == 'popular' or sort == 'most_wishlisted':
+            sort_dict = {"wishlist_count": -1, "created_at": -1}  # Sort by wishlist_count desc, then by created_at
         else:
             sort_dict = {"created_at": -1}
         
@@ -837,6 +1135,11 @@ async def create_product(product_data: ProductCreate):
         }
         
         print(f"💾 Saving product to DB: {new_product['name']}")
+        # Debug: Log images in color variants
+        if 'variants' in new_product and 'colors' in new_product['variants']:
+            for i, color in enumerate(new_product['variants']['colors']):
+                images_count = len(color.get('images', []))
+                print(f"  📸 Color {i} ({color.get('name', 'N/A')}): {images_count} images")
         result = await products_collection.insert_one(new_product)
         print(f"✅ Product saved with ID: {result.inserted_id}")
         
@@ -1379,9 +1682,10 @@ async def create_order(order_data: OrderCreate):
             "order_number": order_number,
             "items": [item.dict() for item in order_data.items],
             "total_amount": order_data.total_amount,
-            "shipping_address": order_data.shipping_address,
+            "shipping_address": order_data.shipping_address.dict() if hasattr(order_data.shipping_address, 'dict') else order_data.shipping_address,
             "payment_method": order_data.payment_method,
             "status": order_data.status,
+            "note": order_data.note or "",
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat()
         }
@@ -1390,13 +1694,33 @@ async def create_order(order_data: OrderCreate):
         
         new_order["_id"] = result.inserted_id
         
+        # Cập nhật sold_count cho các sản phẩm trong đơn hàng
+        for item in order_data.items:
+            product_id = item.product_id
+            quantity = item.quantity
+            try:
+                await products_collection.update_one(
+                    {"_id": ObjectId(product_id)},
+                    {"$inc": {"sold_count": quantity}}
+                )
+            except Exception as e:
+                print(f"Error updating sold_count for product {product_id}: {e}")
+        
+        # Convert shipping_address from dict to ShippingAddress object for response
+        from app.schemas import ShippingAddress
+        shipping_addr = new_order["shipping_address"]
+        if isinstance(shipping_addr, dict):
+            shipping_addr_obj = ShippingAddress(**shipping_addr)
+        else:
+            shipping_addr_obj = shipping_addr
+        
         return OrderResponse(
             id=str(result.inserted_id),
             user_id=new_order["user_id"],
             order_number=new_order["order_number"],
             items=new_order["items"],
             total_amount=new_order["total_amount"],
-            shipping_address=new_order["shipping_address"],
+            shipping_address=shipping_addr_obj,
             payment_method=new_order["payment_method"],
             status=new_order["status"],
             created_at=new_order["created_at"],
@@ -1415,15 +1739,39 @@ async def get_user_orders(user_id: str = Path(...)):
         cursor = orders_collection.find({"user_id": user_id}).sort("created_at", -1)
         orders = await cursor.to_list(length=None)
         
+        from app.schemas import ShippingAddress
         result_orders = []
         for order in orders:
+            shipping_addr = order.get("shipping_address", {})
+            if isinstance(shipping_addr, dict) and shipping_addr:
+                shipping_addr_obj = ShippingAddress(**shipping_addr)
+            elif isinstance(shipping_addr, str):
+                # Handle legacy string format
+                shipping_addr_obj = ShippingAddress(
+                    full_name="",
+                    phone="",
+                    email="",
+                    street=shipping_addr,
+                    ward="",
+                    city=""
+                )
+            else:
+                shipping_addr_obj = ShippingAddress(
+                    full_name="",
+                    phone="",
+                    email="",
+                    street="",
+                    ward="",
+                    city=""
+                )
+            
             result_orders.append(OrderResponse(
                 id=str(order["_id"]),
                 user_id=order.get("user_id", ""),
                 order_number=order.get("order_number", ""),
                 items=order.get("items", []),
                 total_amount=order.get("total_amount", 0),
-                shipping_address=order.get("shipping_address", ""),
+                shipping_address=shipping_addr_obj,
                 payment_method=order.get("payment_method", "COD"),
                 status=order.get("status", "pending"),
                 created_at=order.get("created_at", datetime.now().isoformat()),
@@ -1435,6 +1783,258 @@ async def get_user_orders(user_id: str = Path(...)):
             orders=result_orders,
             total=len(result_orders)
         )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.get("/api/orders/{order_id}", response_model=OrderResponse)
+async def get_order_by_id(order_id: str = Path(...)):
+    """Lấy chi tiết đơn hàng theo ID"""
+    try:
+        from bson import ObjectId
+        order = await orders_collection.find_one({"_id": ObjectId(order_id)})
+        
+        if not order:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Không tìm thấy đơn hàng"
+            )
+        
+        from app.schemas import ShippingAddress
+        shipping_addr = order.get("shipping_address", {})
+        if isinstance(shipping_addr, dict) and shipping_addr:
+            shipping_addr_obj = ShippingAddress(**shipping_addr)
+        elif isinstance(shipping_addr, str):
+            shipping_addr_obj = ShippingAddress(
+                full_name="",
+                phone="",
+                email="",
+                street=shipping_addr,
+                ward="",
+                city=""
+            )
+        else:
+            shipping_addr_obj = ShippingAddress(
+                full_name="",
+                phone="",
+                email="",
+                street="",
+                ward="",
+                city=""
+            )
+        
+        return OrderResponse(
+            id=str(order["_id"]),
+            user_id=order.get("user_id", ""),
+            order_number=order.get("order_number", ""),
+            items=order.get("items", []),
+            total_amount=order.get("total_amount", 0),
+            shipping_address=shipping_addr_obj,
+            payment_method=order.get("payment_method", "COD"),
+            status=order.get("status", "pending"),
+            note=order.get("note", ""),
+            created_at=order.get("created_at", datetime.now().isoformat()),
+            updated_at=order.get("updated_at")
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+# ==================== ADMIN ORDERS API ====================
+@app.get("/api/admin/orders/count/pending")
+async def get_pending_orders_count():
+    """Đếm số đơn hàng đang chờ xử lý (pending hoặc processing)"""
+    try:
+        count = await orders_collection.count_documents({
+            "status": {"$in": ["pending", "processing"]}
+        })
+        return {"count": count}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.get("/api/admin/orders", response_model=OrderListResponse)
+async def get_all_orders(
+    status: Optional[str] = Query(None, description="Lọc theo trạng thái"),
+    page: int = Query(1, ge=1, description="Số trang"),
+    limit: int = Query(20, ge=1, le=100, description="Số lượng mỗi trang"),
+    search: Optional[str] = Query(None, description="Tìm kiếm theo mã đơn hàng hoặc tên khách hàng")
+):
+    """Lấy tất cả đơn hàng (Admin only)"""
+    try:
+        query = {}
+        
+        # Filter by status
+        if status and status != 'all':
+            query["status"] = status
+        
+        # Search by order number or customer name
+        if search:
+            from bson import ObjectId
+            from bson.errors import InvalidId
+            # Try to search by order ID first
+            try:
+                query["_id"] = ObjectId(search)
+            except (InvalidId, ValueError):
+                # If not a valid ObjectId, search by order number, customer name, or phone
+                query["$or"] = [
+                    {"order_number": {"$regex": search, "$options": "i"}},
+                    {"shipping_address.full_name": {"$regex": search, "$options": "i"}},
+                    {"shipping_address.phone": {"$regex": search, "$options": "i"}}
+                ]
+        
+        # Calculate skip
+        skip = (page - 1) * limit
+        
+        # Get total count
+        total = await orders_collection.count_documents(query)
+        
+        # Get orders
+        cursor = orders_collection.find(query).sort("created_at", -1).skip(skip).limit(limit)
+        orders = await cursor.to_list(length=limit)
+        
+        from app.schemas import ShippingAddress
+        result_orders = []
+        for order in orders:
+            shipping_addr = order.get("shipping_address", {})
+            if isinstance(shipping_addr, dict) and shipping_addr:
+                shipping_addr_obj = ShippingAddress(**shipping_addr)
+            elif isinstance(shipping_addr, str):
+                shipping_addr_obj = ShippingAddress(
+                    full_name="",
+                    phone="",
+                    email="",
+                    street=shipping_addr,
+                    ward="",
+                    city=""
+                )
+            else:
+                shipping_addr_obj = ShippingAddress(
+                    full_name="",
+                    phone="",
+                    email="",
+                    street="",
+                    ward="",
+                    city=""
+                )
+            
+            result_orders.append(OrderResponse(
+                id=str(order["_id"]),
+                user_id=order.get("user_id", ""),
+                order_number=order.get("order_number", ""),
+                items=order.get("items", []),
+                total_amount=order.get("total_amount", 0),
+                shipping_address=shipping_addr_obj,
+                payment_method=order.get("payment_method", "COD"),
+                status=order.get("status", "pending"),
+                note=order.get("note", ""),
+                created_at=order.get("created_at", datetime.now().isoformat()),
+                updated_at=order.get("updated_at")
+            ))
+        
+        return OrderListResponse(
+            success=True,
+            orders=result_orders,
+            total=total
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.put("/api/admin/orders/{order_id}/status", response_model=OrderUpdateResponse)
+async def update_order_status(
+    order_id: str = Path(...),
+    status_update: OrderStatusUpdate = Body(...)
+):
+    """Cập nhật trạng thái đơn hàng (Admin only)"""
+    try:
+        from bson import ObjectId
+        from app.schemas import OrderStatusUpdate, ShippingAddress
+        
+        # Validate status
+        valid_statuses = ["pending", "processing", "shipped", "delivered", "cancelled", "completed"]
+        if status_update.status not in valid_statuses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Trạng thái không hợp lệ. Các trạng thái hợp lệ: {', '.join(valid_statuses)}"
+            )
+        
+        # Find order
+        order = await orders_collection.find_one({"_id": ObjectId(order_id)})
+        if not order:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Không tìm thấy đơn hàng"
+            )
+        
+        # Update status
+        update_data = {
+            "status": status_update.status,
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        await orders_collection.update_one(
+            {"_id": ObjectId(order_id)},
+            {"$set": update_data}
+        )
+        
+        # Get updated order
+        updated_order = await orders_collection.find_one({"_id": ObjectId(order_id)})
+        
+        # Prepare response
+        shipping_addr = updated_order.get("shipping_address", {})
+        if isinstance(shipping_addr, dict) and shipping_addr:
+            shipping_addr_obj = ShippingAddress(**shipping_addr)
+        elif isinstance(shipping_addr, str):
+            shipping_addr_obj = ShippingAddress(
+                full_name="",
+                phone="",
+                email="",
+                street=shipping_addr,
+                ward="",
+                city=""
+            )
+        else:
+            shipping_addr_obj = ShippingAddress(
+                full_name="",
+                phone="",
+                email="",
+                street="",
+                ward="",
+                city=""
+            )
+        
+        order_response = OrderResponse(
+            id=str(updated_order["_id"]),
+            user_id=updated_order.get("user_id", ""),
+            order_number=updated_order.get("order_number", ""),
+            items=updated_order.get("items", []),
+            total_amount=updated_order.get("total_amount", 0),
+            shipping_address=shipping_addr_obj,
+            payment_method=updated_order.get("payment_method", "COD"),
+            status=updated_order.get("status", "pending"),
+            note=updated_order.get("note", ""),
+            created_at=updated_order.get("created_at", datetime.now().isoformat()),
+            updated_at=updated_order.get("updated_at")
+        )
+        
+        return OrderUpdateResponse(
+            success=True,
+            message=f"Đã cập nhật trạng thái đơn hàng thành {status_update.status}",
+            order=order_response
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1580,6 +2180,1549 @@ async def remove_cart_item(user_id: str = Path(...), item_index: int = Path(...)
         return {"success": True, "message": "Đã xóa khỏi giỏ hàng"}
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+# ==================== ADDRESS API ENDPOINTS ====================
+
+@app.get("/api/addresses/user/{user_id}", response_model=AddressListResponse)
+async def get_user_addresses(user_id: str = Path(...)):
+    """Lấy danh sách địa chỉ của user"""
+    try:
+        # Kiểm tra user tồn tại
+        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        if not user:
+            raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+        
+        # Lấy tất cả addresses của user
+        cursor = addresses_collection.find({"user_id": user_id}).sort("created_at", -1)
+        addresses = await cursor.to_list(length=None)
+        
+        result_addresses = []
+        for addr in addresses:
+            result_addresses.append(AddressResponse(
+            id=str(addr["_id"]),
+            user_id=addr.get("user_id", ""),
+            full_name=addr.get("full_name", ""),
+            phone=addr.get("phone", ""),
+            email=addr.get("email"),
+            street=addr.get("street", ""),
+            ward=addr.get("ward", ""),
+            city=addr.get("city", ""),
+            is_default=addr.get("is_default", False),
+            label=addr.get("label"),
+            created_at=addr.get("created_at", datetime.now().isoformat()),
+            updated_at=addr.get("updated_at")
+        ))
+        
+        return AddressListResponse(
+            success=True,
+            addresses=result_addresses,
+            total=len(result_addresses)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.post("/api/addresses", response_model=AddressResponse, status_code=status.HTTP_201_CREATED)
+async def create_address(address_data: AddressCreate):
+    """Tạo địa chỉ mới"""
+    try:
+        # Kiểm tra user tồn tại
+        user = await users_collection.find_one({"_id": ObjectId(address_data.user_id)})
+        if not user:
+            raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+        
+        # Nếu đặt làm mặc định, bỏ mặc định của các địa chỉ khác
+        if address_data.is_default:
+            await addresses_collection.update_many(
+                {"user_id": address_data.user_id, "is_default": True},
+                {"$set": {"is_default": False, "updated_at": datetime.now().isoformat()}}
+            )
+        
+        # Tạo địa chỉ mới
+        new_address = {
+            "user_id": address_data.user_id,
+            "full_name": address_data.full_name,
+            "phone": address_data.phone,
+            "email": address_data.email,
+            "street": address_data.street,
+            "ward": address_data.ward,
+            "city": address_data.city,
+            "is_default": address_data.is_default,
+            "label": address_data.label,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        result = await addresses_collection.insert_one(new_address)
+        
+        return AddressResponse(
+            id=str(result.inserted_id),
+            user_id=new_address["user_id"],
+            full_name=new_address["full_name"],
+            phone=new_address["phone"],
+            email=new_address["email"],
+            street=new_address["street"],
+            ward=new_address["ward"],
+            city=new_address["city"],
+            is_default=new_address["is_default"],
+            label=new_address["label"],
+            created_at=new_address["created_at"],
+            updated_at=new_address["updated_at"]
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.put("/api/addresses/{address_id}", response_model=AddressResponse)
+async def update_address(address_id: str = Path(...), address_data: AddressUpdate = None):
+    """Cập nhật địa chỉ"""
+    try:
+        if not address_data:
+            raise HTTPException(status_code=400, detail="Không có dữ liệu để cập nhật")
+        
+        # Kiểm tra địa chỉ tồn tại
+        address = await addresses_collection.find_one({"_id": ObjectId(address_id)})
+        if not address:
+            raise HTTPException(status_code=404, detail="Không tìm thấy địa chỉ")
+        
+        user_id = address.get("user_id")
+        
+        # Nếu đặt làm mặc định, bỏ mặc định của các địa chỉ khác
+        if address_data.is_default is True:
+            await addresses_collection.update_many(
+                {"user_id": user_id, "is_default": True, "_id": {"$ne": ObjectId(address_id)}},
+                {"$set": {"is_default": False, "updated_at": datetime.now().isoformat()}}
+            )
+        
+        # Cập nhật địa chỉ
+        update_data = {}
+        if address_data.full_name is not None:
+            update_data["full_name"] = address_data.full_name
+        if address_data.phone is not None:
+            update_data["phone"] = address_data.phone
+        if address_data.email is not None:
+            update_data["email"] = address_data.email
+        if address_data.street is not None:
+            update_data["street"] = address_data.street
+        if address_data.ward is not None:
+            update_data["ward"] = address_data.ward
+        if address_data.city is not None:
+            update_data["city"] = address_data.city
+        if address_data.is_default is not None:
+            update_data["is_default"] = address_data.is_default
+        if address_data.label is not None:
+            update_data["label"] = address_data.label
+        
+        if not update_data:
+            raise HTTPException(status_code=400, detail="Không có dữ liệu để cập nhật")
+        
+        update_data["updated_at"] = datetime.now().isoformat()
+        
+        await addresses_collection.update_one(
+            {"_id": ObjectId(address_id)},
+            {"$set": update_data}
+        )
+        
+        # Lấy địa chỉ đã cập nhật
+        updated_address = await addresses_collection.find_one({"_id": ObjectId(address_id)})
+        
+        return AddressResponse(
+            id=str(updated_address["_id"]),
+            user_id=updated_address.get("user_id", ""),
+            full_name=updated_address.get("full_name", ""),
+            phone=updated_address.get("phone", ""),
+            email=updated_address.get("email"),
+            street=updated_address.get("street", ""),
+            ward=updated_address.get("ward", ""),
+            city=updated_address.get("city", ""),
+            is_default=updated_address.get("is_default", False),
+            label=updated_address.get("label"),
+            created_at=updated_address.get("created_at", datetime.now().isoformat()),
+            updated_at=updated_address.get("updated_at")
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.delete("/api/addresses/{address_id}")
+async def delete_address(address_id: str = Path(...)):
+    """Xóa địa chỉ"""
+    try:
+        # Kiểm tra địa chỉ tồn tại
+        address = await addresses_collection.find_one({"_id": ObjectId(address_id)})
+        if not address:
+            raise HTTPException(status_code=404, detail="Không tìm thấy địa chỉ")
+        
+        # Xóa địa chỉ
+        await addresses_collection.delete_one({"_id": ObjectId(address_id)})
+        
+        return {"success": True, "message": "Đã xóa địa chỉ"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+# ==================== ADMIN CUSTOMER MANAGEMENT ====================
+
+@app.get("/api/admin/customers", response_model=CustomerListResponse)
+async def get_all_customers(
+    page: int = Query(1, ge=1, description="Số trang"),
+    limit: int = Query(50, ge=1, le=100, description="Số lượng mỗi trang"),
+    search: Optional[str] = Query(None, description="Tìm kiếm theo tên, email, username"),
+    role: Optional[str] = Query(None, description="Lọc theo role (user/admin)"),
+    is_banned: Optional[bool] = Query(None, description="Lọc theo trạng thái ban"),
+):
+    """Lấy danh sách tất cả khách hàng với phân trang và tìm kiếm"""
+    try:
+        # Xây dựng query filter
+        query = {}
+        
+        if search:
+            query["$or"] = [
+                {"name": {"$regex": search, "$options": "i"}},
+                {"email": {"$regex": search, "$options": "i"}},
+                {"username": {"$regex": search, "$options": "i"}}
+            ]
+        
+        if role:
+            query["role"] = role
+        
+        if is_banned is not None:
+            query["is_banned"] = is_banned
+        
+        # Tính toán skip
+        skip = (page - 1) * limit
+        
+        # Lấy tổng số
+        total = await users_collection.count_documents(query)
+        
+        # Lấy danh sách users
+        cursor = users_collection.find(query).skip(skip).limit(limit).sort("createdAt", -1)
+        users = await cursor.to_list(length=limit)
+        
+        # Tính toán thống kê cho mỗi user
+        customers = []
+        for user in users:
+            user_id = str(user["_id"])
+            
+            # Đếm số đơn hàng
+            total_orders = await orders_collection.count_documents({"user_id": user_id})
+            
+            # Tính tổng số tiền đã chi
+            orders_cursor = orders_collection.find({"user_id": user_id})
+            orders = await orders_cursor.to_list(length=None)
+            total_spent = sum(order.get("total_amount", 0) for order in orders)
+            
+            customers.append(CustomerResponse(
+                id=user_id,
+                username=user["username"],
+                email=user["email"],
+                name=user["name"],
+                dateOfBirth=user["dateOfBirth"],
+                createdAt=user["createdAt"],
+                role=user.get("role", "user"),
+                emailVerified=user.get("emailVerified", False),
+                avatar=user.get("avatar", ""),
+                phone=user.get("phone", ""),
+                address=user.get("address", ""),
+                memberLevel=user.get("memberLevel", "bronze"),
+                is_banned=user.get("is_banned", False),
+                total_orders=total_orders,
+                total_spent=total_spent
+            ))
+        
+        return CustomerListResponse(
+            success=True,
+            customers=customers,
+            total=total,
+            page=page,
+            limit=limit
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.put("/api/admin/customers/{user_id}/ban", response_model=CustomerResponse)
+async def ban_unban_customer(
+    user_id: str = Path(...),
+    ban_data: CustomerBanUpdate = Body(...)
+):
+    """Khóa hoặc mở khóa tài khoản khách hàng"""
+    try:
+        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        if not user:
+            raise HTTPException(status_code=404, detail="Không tìm thấy khách hàng")
+        
+        # Cập nhật trạng thái ban
+        await users_collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"is_banned": ban_data.is_banned, "updated_at": datetime.now().isoformat()}}
+        )
+        
+        # Lấy lại user đã cập nhật
+        updated_user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        
+        # Tính toán thống kê
+        total_orders = await orders_collection.count_documents({"user_id": user_id})
+        orders_cursor = orders_collection.find({"user_id": user_id})
+        orders = await orders_cursor.to_list(length=None)
+        total_spent = sum(order.get("total_amount", 0) for order in orders)
+        
+        return CustomerResponse(
+            id=str(updated_user["_id"]),
+            username=updated_user["username"],
+            email=updated_user["email"],
+            name=updated_user["name"],
+            dateOfBirth=updated_user["dateOfBirth"],
+            createdAt=updated_user["createdAt"],
+            role=updated_user.get("role", "user"),
+            emailVerified=updated_user.get("emailVerified", False),
+            avatar=updated_user.get("avatar", ""),
+            phone=updated_user.get("phone", ""),
+            address=updated_user.get("address", ""),
+            memberLevel=updated_user.get("memberLevel", "bronze"),
+            is_banned=updated_user.get("is_banned", False),
+            total_orders=total_orders,
+            total_spent=total_spent
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.put("/api/admin/customers/{user_id}/role", response_model=CustomerResponse)
+async def update_customer_role(
+    user_id: str = Path(...),
+    role_data: CustomerRoleUpdate = Body(...)
+):
+    """Cập nhật role của khách hàng"""
+    try:
+        if role_data.role not in ["user", "admin"]:
+            raise HTTPException(status_code=400, detail="Role phải là 'user' hoặc 'admin'")
+        
+        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        if not user:
+            raise HTTPException(status_code=404, detail="Không tìm thấy khách hàng")
+        
+        # Cập nhật role
+        await users_collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {"role": role_data.role, "updated_at": datetime.now().isoformat()}}
+        )
+        
+        # Lấy lại user đã cập nhật
+        updated_user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        
+        # Tính toán thống kê
+        total_orders = await orders_collection.count_documents({"user_id": user_id})
+        orders_cursor = orders_collection.find({"user_id": user_id})
+        orders = await orders_cursor.to_list(length=None)
+        total_spent = sum(order.get("total_amount", 0) for order in orders)
+        
+        return CustomerResponse(
+            id=str(updated_user["_id"]),
+            username=updated_user["username"],
+            email=updated_user["email"],
+            name=updated_user["name"],
+            dateOfBirth=updated_user["dateOfBirth"],
+            createdAt=updated_user["createdAt"],
+            role=updated_user.get("role", "user"),
+            emailVerified=updated_user.get("emailVerified", False),
+            avatar=updated_user.get("avatar", ""),
+            phone=updated_user.get("phone", ""),
+            address=updated_user.get("address", ""),
+            memberLevel=updated_user.get("memberLevel", "bronze"),
+            is_banned=updated_user.get("is_banned", False),
+            total_orders=total_orders,
+            total_spent=total_spent
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.post("/api/admin/customers/send-promotion", response_model=PromotionEmailResponse)
+async def send_promotion_emails(request: PromotionEmailRequest):
+    """Gửi email khuyến mãi cho khách hàng được chọn hoặc tất cả khách hàng"""
+    try:
+        # Xác định danh sách user IDs
+        if request.user_ids:
+            # Gửi cho danh sách user cụ thể
+            user_ids = [ObjectId(uid) for uid in request.user_ids]
+            users = await users_collection.find({"_id": {"$in": user_ids}}).to_list(length=None)
+        else:
+            # Gửi cho tất cả users (trừ admin nếu muốn)
+            users = await users_collection.find({"role": "user"}).to_list(length=None)
+        
+        sent_count = 0
+        failed_count = 0
+        
+        # Gửi email cho từng user
+        for user in users:
+            try:
+                success = await send_promotion_email(
+                    to_email=user["email"],
+                    username=user["username"],
+                    name=user.get("name", user["username"]),
+                    subject=request.subject,
+                    content=request.content
+                )
+                if success:
+                    sent_count += 1
+                else:
+                    failed_count += 1
+            except Exception as e:
+                print(f"[ERROR] Lỗi khi gửi email cho {user['email']}: {str(e)}")
+                failed_count += 1
+        
+        return PromotionEmailResponse(
+            success=True,
+            message=f"Đã gửi {sent_count} email thành công, {failed_count} email thất bại",
+            sent_count=sent_count,
+            failed_count=failed_count
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+# ==================== ADMIN COUPON MANAGEMENT ====================
+
+@app.get("/api/admin/coupons", response_model=CouponListResponse)
+async def get_all_coupons():
+    """Lấy danh sách tất cả mã giảm giá"""
+    try:
+        cursor = coupons_collection.find({}).sort("createdAt", -1)
+        coupons_data = await cursor.to_list(length=None)
+        
+        coupons = []
+        for coupon in coupons_data:
+            coupons.append(CouponResponse(
+                id=str(coupon["_id"]),
+                code=coupon["code"],
+                discount_type=coupon["discount_type"],
+                discount_value=coupon["discount_value"],
+                min_order_amount=coupon.get("min_order_amount", 0),
+                max_discount=coupon.get("max_discount"),
+                usage_limit=coupon.get("usage_limit"),
+                used_count=coupon.get("used_count", 0),
+                valid_from=coupon.get("valid_from"),
+                valid_until=coupon.get("valid_until"),
+                is_active=coupon.get("is_active", True),
+                created_at=coupon["createdAt"],
+                updated_at=coupon.get("updated_at")
+            ))
+        
+        return CouponListResponse(
+            success=True,
+            coupons=coupons,
+            total=len(coupons)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.post("/api/admin/coupons", response_model=CouponResponse, status_code=status.HTTP_201_CREATED)
+async def create_coupon(coupon_data: CouponCreate):
+    """Tạo mã giảm giá mới"""
+    try:
+        # Kiểm tra mã đã tồn tại chưa
+        existing = await coupons_collection.find_one({"code": coupon_data.code})
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mã giảm giá đã tồn tại"
+            )
+        
+        # Validate discount_type
+        if coupon_data.discount_type not in ["percentage", "fixed"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="discount_type phải là 'percentage' hoặc 'fixed'"
+            )
+        
+        # Validate discount_value
+        if coupon_data.discount_type == "percentage" and coupon_data.discount_value > 100:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Giảm giá phần trăm không được vượt quá 100%"
+            )
+        
+        coupon_doc = {
+            "code": coupon_data.code.upper(),
+            "discount_type": coupon_data.discount_type,
+            "discount_value": coupon_data.discount_value,
+            "min_order_amount": coupon_data.min_order_amount,
+            "max_discount": coupon_data.max_discount,
+            "usage_limit": coupon_data.usage_limit,
+            "used_count": 0,
+            "valid_from": coupon_data.valid_from,
+            "valid_until": coupon_data.valid_until,
+            "is_active": coupon_data.is_active,
+            "createdAt": datetime.now().isoformat(),
+            "updated_at": None
+        }
+        
+        result = await coupons_collection.insert_one(coupon_doc)
+        
+        # Lấy lại coupon vừa tạo
+        new_coupon = await coupons_collection.find_one({"_id": result.inserted_id})
+        
+        return CouponResponse(
+            id=str(new_coupon["_id"]),
+            code=new_coupon["code"],
+            discount_type=new_coupon["discount_type"],
+            discount_value=new_coupon["discount_value"],
+            min_order_amount=new_coupon.get("min_order_amount", 0),
+            max_discount=new_coupon.get("max_discount"),
+            usage_limit=new_coupon.get("usage_limit"),
+            used_count=new_coupon.get("used_count", 0),
+            valid_from=new_coupon.get("valid_from"),
+            valid_until=new_coupon.get("valid_until"),
+            is_active=new_coupon.get("is_active", True),
+            created_at=new_coupon["createdAt"],
+            updated_at=new_coupon.get("updated_at")
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.put("/api/admin/coupons/{coupon_id}", response_model=CouponResponse)
+async def update_coupon(
+    coupon_id: str = Path(...),
+    coupon_data: CouponUpdate = Body(...)
+):
+    """Cập nhật mã giảm giá"""
+    try:
+        coupon = await coupons_collection.find_one({"_id": ObjectId(coupon_id)})
+        if not coupon:
+            raise HTTPException(status_code=404, detail="Không tìm thấy mã giảm giá")
+        
+        update_data = {}
+        
+        if coupon_data.code is not None:
+            # Kiểm tra mã đã tồn tại chưa (trừ chính nó)
+            existing = await coupons_collection.find_one({
+                "code": coupon_data.code.upper(),
+                "_id": {"$ne": ObjectId(coupon_id)}
+            })
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Mã giảm giá đã tồn tại"
+                )
+            update_data["code"] = coupon_data.code.upper()
+        
+        if coupon_data.discount_type is not None:
+            if coupon_data.discount_type not in ["percentage", "fixed"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="discount_type phải là 'percentage' hoặc 'fixed'"
+                )
+            update_data["discount_type"] = coupon_data.discount_type
+        
+        if coupon_data.discount_value is not None:
+            update_data["discount_value"] = coupon_data.discount_value
+            # Validate percentage
+            if update_data.get("discount_type", coupon["discount_type"]) == "percentage" and coupon_data.discount_value > 100:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Giảm giá phần trăm không được vượt quá 100%"
+                )
+        
+        if coupon_data.min_order_amount is not None:
+            update_data["min_order_amount"] = coupon_data.min_order_amount
+        
+        if coupon_data.max_discount is not None:
+            update_data["max_discount"] = coupon_data.max_discount
+        
+        if coupon_data.usage_limit is not None:
+            update_data["usage_limit"] = coupon_data.usage_limit
+        
+        if coupon_data.valid_from is not None:
+            update_data["valid_from"] = coupon_data.valid_from
+        
+        if coupon_data.valid_until is not None:
+            update_data["valid_until"] = coupon_data.valid_until
+        
+        if coupon_data.is_active is not None:
+            update_data["is_active"] = coupon_data.is_active
+        
+        if update_data:
+            update_data["updated_at"] = datetime.now().isoformat()
+            await coupons_collection.update_one(
+                {"_id": ObjectId(coupon_id)},
+                {"$set": update_data}
+            )
+        
+        # Lấy lại coupon đã cập nhật
+        updated_coupon = await coupons_collection.find_one({"_id": ObjectId(coupon_id)})
+        
+        return CouponResponse(
+            id=str(updated_coupon["_id"]),
+            code=updated_coupon["code"],
+            discount_type=updated_coupon["discount_type"],
+            discount_value=updated_coupon["discount_value"],
+            min_order_amount=updated_coupon.get("min_order_amount", 0),
+            max_discount=updated_coupon.get("max_discount"),
+            usage_limit=updated_coupon.get("usage_limit"),
+            used_count=updated_coupon.get("used_count", 0),
+            valid_from=updated_coupon.get("valid_from"),
+            valid_until=updated_coupon.get("valid_until"),
+            is_active=updated_coupon.get("is_active", True),
+            created_at=updated_coupon["createdAt"],
+            updated_at=updated_coupon.get("updated_at")
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.post("/api/coupons/validate", response_model=CouponValidateResponse)
+async def validate_coupon(request: CouponValidateRequest):
+    """Validate mã giảm giá khi áp dụng"""
+    try:
+        # Tìm coupon theo code (uppercase)
+        coupon = await coupons_collection.find_one({"code": request.code.upper()})
+        
+        if not coupon:
+            return CouponValidateResponse(
+                success=False,
+                valid=False,
+                message="Mã giảm giá không tồn tại",
+                coupon=None,
+                discount_amount=None
+            )
+        
+        # Kiểm tra trạng thái active
+        if not coupon.get("is_active", True):
+            return CouponValidateResponse(
+                success=False,
+                valid=False,
+                message="Mã giảm giá đã bị vô hiệu hóa",
+                coupon=None,
+                discount_amount=None
+            )
+        
+        # Kiểm tra thời gian hiệu lực
+        now = datetime.now()
+        if coupon.get("valid_from"):
+            valid_from = datetime.fromisoformat(coupon["valid_from"])
+            if now < valid_from:
+                return CouponValidateResponse(
+                    success=False,
+                    valid=False,
+                    message=f"Mã giảm giá chưa có hiệu lực (từ {coupon['valid_from']})",
+                    coupon=None,
+                    discount_amount=None
+                )
+        
+        if coupon.get("valid_until"):
+            valid_until = datetime.fromisoformat(coupon["valid_until"])
+            if now > valid_until:
+                return CouponValidateResponse(
+                    success=False,
+                    valid=False,
+                    message=f"Mã giảm giá đã hết hạn (đến {coupon['valid_until']})",
+                    coupon=None,
+                    discount_amount=None
+                )
+        
+        # Kiểm tra số lần sử dụng
+        used_count = coupon.get("used_count", 0)
+        usage_limit = coupon.get("usage_limit")
+        if usage_limit and used_count >= usage_limit:
+            return CouponValidateResponse(
+                success=False,
+                valid=False,
+                message="Mã giảm giá đã hết số lần sử dụng",
+                coupon=None,
+                discount_amount=None
+            )
+        
+        # Kiểm tra đơn hàng tối thiểu
+        min_order_amount = coupon.get("min_order_amount", 0)
+        if request.subtotal < min_order_amount:
+            return CouponValidateResponse(
+                success=False,
+                valid=False,
+                message=f"Đơn hàng tối thiểu {int(min_order_amount):,}₫ để áp dụng mã này",
+                coupon=None,
+                discount_amount=None
+            )
+        
+        # Tính toán số tiền giảm
+        discount_amount = 0
+        discount_type = coupon.get("discount_type")
+        discount_value = coupon.get("discount_value", 0)
+        
+        if discount_type == "percentage":
+            discount_amount = request.subtotal * discount_value / 100
+            # Áp dụng max_discount nếu có
+            max_discount = coupon.get("max_discount")
+            if max_discount and discount_amount > max_discount:
+                discount_amount = max_discount
+        elif discount_type == "fixed":
+            discount_amount = discount_value
+            # Không được vượt quá subtotal
+            if discount_amount > request.subtotal:
+                discount_amount = request.subtotal
+        
+        # Tạo CouponResponse
+        coupon_response = CouponResponse(
+            id=str(coupon["_id"]),
+            code=coupon["code"],
+            discount_type=coupon["discount_type"],
+            discount_value=coupon["discount_value"],
+            min_order_amount=coupon.get("min_order_amount", 0),
+            max_discount=coupon.get("max_discount"),
+            usage_limit=coupon.get("usage_limit"),
+            used_count=coupon.get("used_count", 0),
+            valid_from=coupon.get("valid_from"),
+            valid_until=coupon.get("valid_until"),
+            is_active=coupon.get("is_active", True),
+            created_at=coupon.get("createdAt", datetime.now().isoformat()),
+            updated_at=coupon.get("updated_at")
+        )
+        
+        return CouponValidateResponse(
+            success=True,
+            valid=True,
+            message="Mã giảm giá hợp lệ",
+            coupon=coupon_response,
+            discount_amount=discount_amount
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.delete("/api/admin/coupons/{coupon_id}")
+async def delete_coupon(coupon_id: str = Path(...)):
+    """Xóa mã giảm giá"""
+    try:
+        coupon = await coupons_collection.find_one({"_id": ObjectId(coupon_id)})
+        if not coupon:
+            raise HTTPException(status_code=404, detail="Không tìm thấy mã giảm giá")
+        
+        await coupons_collection.delete_one({"_id": ObjectId(coupon_id)})
+        
+        return {"success": True, "message": "Đã xóa mã giảm giá"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+# ==================== RETURN/REFUND API ENDPOINTS ====================
+
+@app.get("/api/admin/returns", response_model=ReturnListResponse)
+async def get_all_returns(status: Optional[str] = Query(None, description="Lọc theo trạng thái")):
+    """Lấy danh sách tất cả yêu cầu trả hàng (admin)"""
+    try:
+        query = {}
+        if status and status != 'all':
+            query["status"] = status
+        
+        cursor = returns_collection.find(query).sort("createdAt", -1)
+        returns_data = await cursor.to_list(length=None)
+        
+        returns = []
+        for ret in returns_data:
+            returns.append(ReturnResponse(
+                id=str(ret["_id"]),
+                return_number=ret.get("return_number", f"RET{str(ret['_id'])[:8].upper()}"),
+                user_id=ret["user_id"],
+                order_id=ret["order_id"],
+                items=ret.get("items", []),
+                reason=ret.get("reason", ""),
+                description=ret.get("description"),
+                refund_method=ret.get("refund_method", "original"),
+                bank_account=ret.get("bank_account"),
+                photos=ret.get("photos", []),
+                status=ret.get("status", "pending"),
+                refund_amount=ret.get("refund_amount"),
+                refund_date=ret.get("refund_date"),
+                admin_note=ret.get("admin_note"),
+                created_at=ret.get("createdAt", datetime.now().isoformat()),
+                updated_at=ret.get("updated_at")
+            ))
+        
+        return ReturnListResponse(
+            success=True,
+            returns=returns,
+            total=len(returns)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.get("/api/returns", response_model=ReturnListResponse)
+async def get_user_returns(user_id: str = Query(..., description="ID người dùng")):
+    """Lấy danh sách yêu cầu trả hàng của người dùng"""
+    try:
+        cursor = returns_collection.find({"user_id": user_id}).sort("createdAt", -1)
+        returns_data = await cursor.to_list(length=None)
+        
+        returns = []
+        for ret in returns_data:
+            returns.append(ReturnResponse(
+                id=str(ret["_id"]),
+                return_number=ret.get("return_number", f"RET{str(ret['_id'])[:8].upper()}"),
+                user_id=ret["user_id"],
+                order_id=ret["order_id"],
+                items=ret.get("items", []),
+                reason=ret.get("reason", ""),
+                description=ret.get("description"),
+                refund_method=ret.get("refund_method", "original"),
+                bank_account=ret.get("bank_account"),
+                photos=ret.get("photos", []),
+                status=ret.get("status", "pending"),
+                refund_amount=ret.get("refund_amount"),
+                refund_date=ret.get("refund_date"),
+                admin_note=ret.get("admin_note"),
+                created_at=ret.get("createdAt", datetime.now().isoformat()),
+                updated_at=ret.get("updated_at")
+            ))
+        
+        return ReturnListResponse(
+            success=True,
+            returns=returns,
+            total=len(returns)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.get("/api/returns/{return_id}", response_model=ReturnResponse)
+async def get_return(return_id: str = Path(...)):
+    """Lấy thông tin chi tiết một yêu cầu trả hàng"""
+    try:
+        return_doc = await returns_collection.find_one({"_id": ObjectId(return_id)})
+        if not return_doc:
+            raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu trả hàng")
+        
+        return ReturnResponse(
+            id=str(return_doc["_id"]),
+            return_number=return_doc.get("return_number", f"RET{str(return_doc['_id'])[:8].upper()}"),
+            user_id=return_doc["user_id"],
+            order_id=return_doc["order_id"],
+            items=return_doc.get("items", []),
+            reason=return_doc.get("reason", ""),
+            description=return_doc.get("description"),
+            refund_method=return_doc.get("refund_method", "original"),
+            bank_account=return_doc.get("bank_account"),
+            photos=return_doc.get("photos", []),
+            status=return_doc.get("status", "pending"),
+            refund_amount=return_doc.get("refund_amount"),
+            refund_date=return_doc.get("refund_date"),
+            admin_note=return_doc.get("admin_note"),
+            created_at=return_doc.get("createdAt", datetime.now().isoformat()),
+            updated_at=return_doc.get("updated_at")
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.post("/api/returns", response_model=ReturnResponse, status_code=status.HTTP_201_CREATED)
+async def create_return(return_data: ReturnCreate, user_id: str = Query(..., description="ID người dùng")):
+    """Tạo yêu cầu trả hàng mới"""
+    try:
+        # Kiểm tra đơn hàng có tồn tại và thuộc về user không
+        order = await orders_collection.find_one({"_id": ObjectId(return_data.order_id)})
+        if not order:
+            raise HTTPException(status_code=404, detail="Không tìm thấy đơn hàng")
+        
+        if order.get("user_id") != user_id:
+            raise HTTPException(status_code=403, detail="Bạn không có quyền truy cập đơn hàng này")
+        
+        # Kiểm tra đơn hàng có thể trả hàng không (delivered hoặc completed)
+        order_status = order.get("status", "")
+        if order_status not in ["delivered", "completed"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Chỉ có thể trả hàng cho đơn hàng đã giao hoặc hoàn thành"
+            )
+        
+        # Tính số tiền hoàn
+        total_refund = sum(item.price * item.quantity for item in return_data.items)
+        
+        # Tạo return number
+        return_count = await returns_collection.count_documents({})
+        return_number = f"RET{str(return_count + 1).zfill(6)}"
+        
+        new_return = {
+            "return_number": return_number,
+            "user_id": user_id,
+            "order_id": return_data.order_id,
+            "items": [item.model_dump() for item in return_data.items],
+            "reason": return_data.reason,
+            "description": return_data.description,
+            "refund_method": return_data.refund_method,
+            "bank_account": return_data.bank_account,
+            "photos": return_data.photos or [],
+            "status": "pending",
+            "refund_amount": total_refund,
+            "refund_date": None,
+            "admin_note": None,
+            "createdAt": datetime.now().isoformat(),
+            "updated_at": None
+        }
+        
+        result = await returns_collection.insert_one(new_return)
+        
+        return ReturnResponse(
+            id=str(result.inserted_id),
+            return_number=return_number,
+            user_id=user_id,
+            order_id=return_data.order_id,
+            items=return_data.items,
+            reason=return_data.reason,
+            description=return_data.description,
+            refund_method=return_data.refund_method,
+            bank_account=return_data.bank_account,
+            photos=return_data.photos or [],
+            status="pending",
+            refund_amount=total_refund,
+            refund_date=None,
+            admin_note=None,
+            created_at=new_return["createdAt"],
+            updated_at=None
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.put("/api/returns/{return_id}", response_model=ReturnResponse)
+async def update_return(return_id: str = Path(...), update_data: ReturnUpdate = Body(...)):
+    """Cập nhật yêu cầu trả hàng (chủ yếu cho admin)"""
+    try:
+        return_doc = await returns_collection.find_one({"_id": ObjectId(return_id)})
+        if not return_doc:
+            raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu trả hàng")
+        
+        update_fields = {}
+        if update_data.status is not None:
+            if update_data.status not in ["pending", "approved", "processing", "completed", "rejected"]:
+                raise HTTPException(status_code=400, detail="Trạng thái không hợp lệ")
+            update_fields["status"] = update_data.status
+        
+        if update_data.admin_note is not None:
+            update_fields["admin_note"] = update_data.admin_note
+        
+        if update_data.refund_amount is not None:
+            update_fields["refund_amount"] = update_data.refund_amount
+        
+        if update_data.refund_date is not None:
+            update_fields["refund_date"] = update_data.refund_date
+        
+        if update_fields:
+            update_fields["updated_at"] = datetime.now().isoformat()
+            await returns_collection.update_one(
+                {"_id": ObjectId(return_id)},
+                {"$set": update_fields}
+            )
+        
+        # Lấy lại return đã cập nhật
+        updated_return = await returns_collection.find_one({"_id": ObjectId(return_id)})
+        
+        return ReturnResponse(
+            id=str(updated_return["_id"]),
+            return_number=updated_return.get("return_number", f"RET{str(updated_return['_id'])[:8].upper()}"),
+            user_id=updated_return["user_id"],
+            order_id=updated_return["order_id"],
+            items=updated_return.get("items", []),
+            reason=updated_return.get("reason", ""),
+            description=updated_return.get("description"),
+            refund_method=updated_return.get("refund_method", "original"),
+            bank_account=updated_return.get("bank_account"),
+            photos=updated_return.get("photos", []),
+            status=updated_return.get("status", "pending"),
+            refund_amount=updated_return.get("refund_amount"),
+            refund_date=updated_return.get("refund_date"),
+            admin_note=updated_return.get("admin_note"),
+            created_at=updated_return.get("createdAt", datetime.now().isoformat()),
+            updated_at=updated_return.get("updated_at")
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+# ==================== DASHBOARD API ENDPOINTS ====================
+
+@app.get("/api/admin/dashboard", response_model=DashboardResponse)
+async def get_dashboard_stats():
+    """Lấy thống kê dashboard cho admin"""
+    try:
+        # Tính toán ngày hôm nay và hôm qua
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        yesterday = today - timedelta(days=1)
+        today_end = today + timedelta(days=1)
+        yesterday_end = yesterday + timedelta(days=1)
+        
+        # 1. Doanh thu hôm nay và hôm qua
+        today_orders = await orders_collection.find({
+            "created_at": {
+                "$gte": today.isoformat(),
+                "$lt": today_end.isoformat()
+            },
+            "status": {"$in": ["completed", "delivered", "processing", "shipped"]}
+        }).to_list(length=None)
+        
+        yesterday_orders = await orders_collection.find({
+            "created_at": {
+                "$gte": yesterday.isoformat(),
+                "$lt": yesterday_end.isoformat()
+            },
+            "status": {"$in": ["completed", "delivered", "processing", "shipped"]}
+        }).to_list(length=None)
+        
+        today_revenue = sum(order.get("total_amount", 0) for order in today_orders)
+        yesterday_revenue = sum(order.get("total_amount", 0) for order in yesterday_orders)
+        revenue_change = ((today_revenue - yesterday_revenue) / yesterday_revenue * 100) if yesterday_revenue > 0 else 0
+        
+        # 2. Số đơn hàng hôm nay và hôm qua
+        today_orders_count = len(today_orders)
+        yesterday_orders_count = len(yesterday_orders)
+        orders_change = ((today_orders_count - yesterday_orders_count) / yesterday_orders_count * 100) if yesterday_orders_count > 0 else 0
+        
+        # 3. Số khách hàng mới hôm nay và hôm qua
+        today_users = await users_collection.find({
+            "createdAt": {
+                "$gte": today,
+                "$lt": today_end
+            }
+        }).to_list(length=None)
+        
+        yesterday_users = await users_collection.find({
+            "createdAt": {
+                "$gte": yesterday,
+                "$lt": yesterday_end
+            }
+        }).to_list(length=None)
+        
+        today_customers_count = len(today_users)
+        yesterday_customers_count = len(yesterday_users)
+        customers_change = ((today_customers_count - yesterday_customers_count) / yesterday_customers_count * 100) if yesterday_customers_count > 0 else -100
+        
+        # 4. Lượt truy cập (tạm thời dùng số đơn hàng, có thể thay bằng analytics sau)
+        # TODO: Implement proper page view tracking
+        today_visits = today_orders_count * 60  # Mock calculation
+        yesterday_visits = yesterday_orders_count * 60
+        visits_change = ((today_visits - yesterday_visits) / yesterday_visits * 100) if yesterday_visits > 0 else 0
+        
+        # 5. Doanh thu 30 ngày qua (14 ngày gần nhất cho biểu đồ)
+        revenue_chart_data = []
+        for i in range(13, -1, -1):  # 14 ngày gần nhất
+            date = today - timedelta(days=i)
+            date_start = date.replace(hour=0, minute=0, second=0, microsecond=0)
+            date_end = date_start + timedelta(days=1)
+            
+            day_orders = await orders_collection.find({
+                "created_at": {
+                    "$gte": date_start.isoformat(),
+                    "$lt": date_end.isoformat()
+                },
+                "status": {"$in": ["completed", "delivered", "processing", "shipped"]}
+            }).to_list(length=None)
+            
+            day_revenue = sum(order.get("total_amount", 0) for order in day_orders)
+            revenue_chart_data.append(DashboardRevenueData(
+                date=date.strftime("%d/%m"),
+                revenue=day_revenue
+            ))
+        
+        # 6. Đơn hàng pending (5 đơn mới nhất)
+        pending_orders_list = await orders_collection.find({
+            "status": "pending"
+        }).sort("created_at", -1).limit(5).to_list(length=None)
+        
+        pending_orders = []
+        for order in pending_orders_list:
+            # Lấy thông tin khách hàng
+            user = await users_collection.find_one({"_id": ObjectId(order.get("user_id"))})
+            customer_name = user.get("name", user.get("username", "Khách hàng")) if user else "Khách hàng"
+            
+            # Tính thời gian đã trôi qua
+            created_at = datetime.fromisoformat(order.get("created_at", datetime.now().isoformat()))
+            time_diff = datetime.now() - created_at
+            if time_diff.total_seconds() < 3600:  # Dưới 1 giờ
+                time_ago = f"{int(time_diff.total_seconds() / 60)} phút trước"
+            elif time_diff.total_seconds() < 86400:  # Dưới 1 ngày
+                time_ago = f"{int(time_diff.total_seconds() / 3600)} giờ trước"
+            else:
+                time_ago = f"{int(time_diff.total_seconds() / 86400)} ngày trước"
+            
+            pending_orders.append(DashboardPendingOrder(
+                id=str(order["_id"]),
+                order_number=order.get("order_number", f"ORD{str(order['_id'])[:8].upper()}"),
+                customer_name=customer_name,
+                total_amount=order.get("total_amount", 0),
+                items_count=len(order.get("items", [])),
+                time_ago=time_ago,
+                status=order.get("status", "pending")
+            ))
+        
+        # 7. Sản phẩm sắp hết hàng
+        all_products = await products_collection.find({
+            "status": "active"
+        }).to_list(length=None)
+        
+        low_stock_products = []
+        for product in all_products:
+            inventory = product.get("inventory", {})
+            quantity = inventory.get("quantity", 0)
+            threshold = inventory.get("low_stock_threshold", 10)
+            
+            if quantity <= threshold:
+                low_stock_products.append(DashboardLowStockProduct(
+                    id=str(product["_id"]),
+                    name=product.get("name", ""),
+                    sku=product.get("sku", ""),
+                    stock=quantity,
+                    threshold=threshold
+                ))
+        
+        # Sắp xếp theo số lượng tồn kho (ít nhất trước)
+        low_stock_products.sort(key=lambda x: x.stock)
+        low_stock_products = low_stock_products[:10]  # Lấy 10 sản phẩm đầu tiên
+        
+        # Tạo KPIs
+        kpis = [
+            DashboardKPIMetric(
+                id="revenue",
+                title="Doanh thu hôm nay",
+                value=today_revenue,
+                change=revenue_change,
+                trend="up" if revenue_change >= 0 else "down",
+                is_currency=True
+            ),
+            DashboardKPIMetric(
+                id="orders",
+                title="Đơn hôm nay",
+                value=today_orders_count,
+                change=orders_change,
+                trend="up" if orders_change >= 0 else "down",
+                is_currency=False
+            ),
+            DashboardKPIMetric(
+                id="customers",
+                title="Khách mới",
+                value=today_customers_count,
+                change=customers_change,
+                trend="up" if customers_change >= 0 else "down",
+                is_currency=False
+            ),
+            DashboardKPIMetric(
+                id="visits",
+                title="Lượt truy cập",
+                value=today_visits,
+                change=visits_change,
+                trend="up" if visits_change >= 0 else "down",
+                is_currency=False
+            )
+        ]
+        
+        return DashboardResponse(
+            success=True,
+            kpis=kpis,
+            revenue_chart=revenue_chart_data,
+            pending_orders=pending_orders,
+            low_stock_products=low_stock_products
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+# ==================== SECURITY API (2FA & PASSWORD) ====================
+
+@app.get("/api/security/2fa/status/{user_id}", response_model=Get2FAStatusResponse)
+async def get_2fa_status(user_id: str = Path(...)):
+    """Lấy trạng thái 2FA của người dùng"""
+    try:
+        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        if not user:
+            raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+        
+        return Get2FAStatusResponse(
+            success=True,
+            two_factor_enabled=user.get("two_factor_enabled", False),
+            user_email=user.get("email", "")
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.post("/api/security/2fa/enable", response_model=Enable2FAResponse)
+async def enable_2fa(request: Enable2FARequest):
+    """Bật xác thực 2FA cho người dùng"""
+    try:
+        user = await users_collection.find_one({"_id": ObjectId(request.user_id)})
+        if not user:
+            raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+        
+        # Kiểm tra xem đã bật 2FA chưa
+        if user.get("two_factor_enabled", False):
+            return Enable2FAResponse(
+                success=True,
+                message="2FA đã được bật trước đó",
+                two_factor_enabled=True
+            )
+        
+        # Bật 2FA
+        await users_collection.update_one(
+            {"_id": ObjectId(request.user_id)},
+            {"$set": {"two_factor_enabled": True}}
+        )
+        
+        return Enable2FAResponse(
+            success=True,
+            message="Đã bật xác thực 2FA thành công",
+            two_factor_enabled=True
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.post("/api/security/2fa/disable", response_model=Disable2FAResponse)
+async def disable_2fa(request: Disable2FARequest):
+    """Tắt xác thực 2FA cho người dùng"""
+    try:
+        user = await users_collection.find_one({"_id": ObjectId(request.user_id)})
+        if not user:
+            raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+        
+        # Xác minh mật khẩu
+        if not bcrypt.checkpw(request.password.encode('utf-8'), user["password"].encode('utf-8')):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Mật khẩu không chính xác"
+            )
+        
+        # Tắt 2FA
+        await users_collection.update_one(
+            {"_id": ObjectId(request.user_id)},
+            {"$set": {"two_factor_enabled": False}, "$unset": {"two_factor_code": "", "two_factor_expires": ""}}
+        )
+        
+        return Disable2FAResponse(
+            success=True,
+            message="Đã tắt xác thực 2FA thành công",
+            two_factor_enabled=False
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.post("/api/security/2fa/verify", response_model=Verify2FACodeResponse)
+async def verify_2fa_code(request: Verify2FACodeRequest):
+    """Xác minh mã 2FA khi đăng nhập"""
+    try:
+        # Tìm user theo username
+        user = await users_collection.find_one({"username": request.username})
+        if not user:
+            raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+        
+        # Kiểm tra mã 2FA
+        stored_code = user.get("two_factor_code")
+        code_expires = user.get("two_factor_expires")
+        
+        if not stored_code or not code_expires:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Không tìm thấy mã 2FA hoặc mã đã hết hạn"
+            )
+        
+        # Kiểm tra mã có hết hạn không (10 phút)
+        expires_time = datetime.fromisoformat(code_expires)
+        if datetime.now() > expires_time:
+            # Xóa mã đã hết hạn
+            await users_collection.update_one(
+                {"_id": user["_id"]},
+                {"$unset": {"two_factor_code": "", "two_factor_expires": ""}}
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mã 2FA đã hết hạn. Vui lòng đăng nhập lại"
+            )
+        
+        # Kiểm tra mã có đúng không
+        if stored_code != request.code:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Mã 2FA không chính xác"
+            )
+        
+        # Xóa mã 2FA sau khi xác minh thành công
+        await users_collection.update_one(
+            {"_id": user["_id"]},
+            {"$unset": {"two_factor_code": "", "two_factor_expires": ""}}
+        )
+        
+        # Trả về thông tin user
+        user_response = UserResponse(
+            id=str(user["_id"]),
+            username=user["username"],
+            email=user["email"],
+            name=user["name"],
+            dateOfBirth=user["dateOfBirth"],
+            createdAt=user["createdAt"],
+            role=user.get("role", "user"),
+            emailVerified=user.get("emailVerified", False),
+            avatar=user.get("avatar", ""),
+            phone=user.get("phone", ""),
+            address=user.get("address", ""),
+            memberLevel=user.get("memberLevel", "bronze")
+        )
+        
+        return Verify2FACodeResponse(
+            success=True,
+            message="Xác minh 2FA thành công",
+            user=user_response
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.post("/api/security/change-password", response_model=ChangePasswordResponse)
+async def change_password(request: ChangePasswordRequest):
+    """Đổi mật khẩu cho người dùng"""
+    try:
+        user = await users_collection.find_one({"_id": ObjectId(request.user_id)})
+        if not user:
+            raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
+        
+        # Xác minh mật khẩu hiện tại
+        if not bcrypt.checkpw(request.current_password.encode('utf-8'), user["password"].encode('utf-8')):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Mật khẩu hiện tại không chính xác"
+            )
+        
+        # Kiểm tra mật khẩu mới không trùng với mật khẩu cũ
+        if bcrypt.checkpw(request.new_password.encode('utf-8'), user["password"].encode('utf-8')):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mật khẩu mới không được trùng với mật khẩu hiện tại"
+            )
+        
+        # Hash mật khẩu mới
+        hashed_password = bcrypt.hashpw(request.new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        
+        # Cập nhật mật khẩu
+        await users_collection.update_one(
+            {"_id": ObjectId(request.user_id)},
+            {"$set": {"password": hashed_password}}
+        )
+        
+        return ChangePasswordResponse(
+            success=True,
+            message="Đổi mật khẩu thành công"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+# ==================== SETTINGS ENDPOINTS ====================
+
+@app.get("/api/settings/payments", response_model=PaymentSettingsResponse)
+async def get_payment_settings():
+    """Lấy cài đặt phương thức thanh toán và vận chuyển"""
+    try:
+        # Tìm settings trong database
+        settings = await settings_collection.find_one({"type": "payment_shipping"})
+        
+        # Nếu chưa có settings, tạo mặc định
+        if not settings:
+            default_settings = {
+                "type": "payment_shipping",
+                "payment_methods": [
+                    {
+                        "id": "cod",
+                        "name": "Thanh toán khi nhận hàng (COD)",
+                        "description": "Thanh toán bằng tiền mặt khi nhận hàng",
+                        "enabled": True
+                    },
+                    {
+                        "id": "bank_transfer",
+                        "name": "Chuyển khoản ngân hàng",
+                        "description": "Chuyển khoản qua tài khoản ngân hàng",
+                        "enabled": True
+                    },
+                    {
+                        "id": "momo",
+                        "name": "Ví điện tử MoMo",
+                        "description": "Thanh toán qua ứng dụng MoMo",
+                        "enabled": False
+                    },
+                    {
+                        "id": "zalopay",
+                        "name": "Ví điện tử ZaloPay",
+                        "description": "Thanh toán qua ứng dụng ZaloPay",
+                        "enabled": False
+                    },
+                    {
+                        "id": "vnpay",
+                        "name": "VNPay",
+                        "description": "Thanh toán qua cổng VNPay",
+                        "enabled": False
+                    }
+                ],
+                "shipping_methods": [
+                    {
+                        "id": "standard",
+                        "name": "Giao hàng tiêu chuẩn",
+                        "description": "3-5 ngày",
+                        "price": 30000,
+                        "estimated_days": "3-5",
+                        "enabled": True
+                    },
+                    {
+                        "id": "express",
+                        "name": "Giao hàng nhanh",
+                        "description": "1-2 ngày",
+                        "price": 50000,
+                        "estimated_days": "1-2",
+                        "enabled": True
+                    },
+                    {
+                        "id": "free",
+                        "name": "Miễn phí vận chuyển",
+                        "description": "5-7 ngày",
+                        "price": 0,
+                        "estimated_days": "5-7",
+                        "min_order": 500000,
+                        "enabled": False
+                    }
+                ],
+                "created_at": datetime.now(),
+                "updated_at": datetime.now()
+            }
+            
+            await settings_collection.insert_one(default_settings)
+            settings = default_settings
+        
+        return PaymentSettingsResponse(
+            success=True,
+            payment_methods=settings["payment_methods"],
+            shipping_methods=settings["shipping_methods"]
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.post("/api/settings/payments", response_model=PaymentSettingsResponse)
+async def update_payment_settings(settings_update: PaymentSettingsUpdate):
+    """Cập nhật cài đặt phương thức thanh toán và vận chuyển"""
+    try:
+        # Chuyển đổi Pydantic models sang dict
+        payment_methods = [method.model_dump() for method in settings_update.payment_methods]
+        shipping_methods = [method.model_dump() for method in settings_update.shipping_methods]
+        
+        # Cập nhật hoặc tạo mới settings
+        result = await settings_collection.update_one(
+            {"type": "payment_shipping"},
+            {
+                "$set": {
+                    "payment_methods": payment_methods,
+                    "shipping_methods": shipping_methods,
+                    "updated_at": datetime.now()
+                },
+                "$setOnInsert": {
+                    "type": "payment_shipping",
+                    "created_at": datetime.now()
+                }
+            },
+            upsert=True
+        )
+        
+        return PaymentSettingsResponse(
+            success=True,
+            payment_methods=payment_methods,
+            shipping_methods=shipping_methods
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

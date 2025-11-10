@@ -332,16 +332,19 @@ function FilterSidebar({
 
       {/* Filters Content */}
       <div className="flex-1 overflow-y-auto p-4">
+        {/* 1. Toàn Bộ Sản Phẩm (Categories) */}
         {filters.categories && (
           <FilterSection
-            title="Danh Mục Con"
+            title="Toàn Bộ Sản Phẩm"
             filterKey="category"
             options={filters.categories}
           />
         )}
 
+        {/* 2. Khoảng Giá (Price Range) */}
         <PriceRangeSection />
 
+        {/* 3. Kích Thước (Size) */}
         {filters.sizes && (
           <FilterSection
             title="Kích Thước"
@@ -350,6 +353,7 @@ function FilterSidebar({
           />
         )}
 
+        {/* Additional filters (can be hidden or shown based on needs) */}
         {filters.colors && (
           <FilterSection
             title="Màu Sắc"

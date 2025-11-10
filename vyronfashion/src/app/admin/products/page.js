@@ -277,6 +277,7 @@ export default function AdminProductsPage() {
                   <th>Danh mục</th>
                   <th className="admin-table-cell-center">Tồn kho</th>
                   <th className="admin-table-cell-center">Yêu thích</th>
+                  <th className="admin-table-cell-center">Lượt bán</th>
                   <th className="admin-table-cell-right">Giá</th>
                   <th className="admin-table-cell-center">Trạng thái</th>
                   <th className="admin-table-cell-center">Hành động</th>
@@ -285,7 +286,7 @@ export default function AdminProductsPage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="8" style={{ 
+                    <td colSpan="9" style={{ 
                       textAlign: 'center', 
                       padding: 'var(--space-8)',
                       color: 'var(--text-tertiary)'
@@ -295,7 +296,7 @@ export default function AdminProductsPage() {
                   </tr>
                 ) : products.length === 0 ? (
                   <tr>
-                    <td colSpan="8" style={{ 
+                    <td colSpan="9" style={{ 
                       textAlign: 'center', 
                       padding: 'var(--space-8)',
                       color: 'var(--text-tertiary)'
@@ -369,7 +370,19 @@ export default function AdminProductsPage() {
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                           <Heart size={14} style={{ color: 'var(--error-500)' }} />
                           <span style={{ fontSize: 'var(--text-sm)' }}>
-                            {product.wishlist_count}
+                            {product.wishlist_count || 0}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="admin-table-cell-center">
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                          <TrendingUp size={14} style={{ color: 'var(--success-600)' }} />
+                          <span style={{ 
+                            fontSize: 'var(--text-sm)',
+                            fontWeight: 'var(--font-semibold)',
+                            color: 'var(--text)'
+                          }}>
+                            {product.sold_count || 0}
                           </span>
                         </div>
                       </td>
@@ -442,7 +455,11 @@ export default function AdminProductsPage() {
                                   setProducts(allProducts)
                                 } catch (error) {
                                   console.error('Error deleting product:', error)
-                                  alert('Lỗi khi xóa sản phẩm: ' + error.message)
+                                  if (typeof window !== 'undefined') {
+                                    window.dispatchEvent(new CustomEvent('showToast', { 
+                                      detail: { message: 'Lỗi khi xóa sản phẩm: ' + error.message, type: 'error', duration: 3000 } 
+                                    }));
+                                  }
                                 }
                               }
                             }}
@@ -498,7 +515,11 @@ export default function AdminProductsPage() {
               setSelectedProduct(null)
             } catch (error) {
               console.error('Error saving product:', error)
-              alert('Lỗi khi lưu sản phẩm: ' + error.message)
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('showToast', { 
+                  detail: { message: 'Lỗi khi lưu sản phẩm: ' + error.message, type: 'error', duration: 3000 } 
+                }));
+              }
             }
           }}
         />

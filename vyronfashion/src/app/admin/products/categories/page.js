@@ -14,8 +14,8 @@ import {
   ChevronRight
 } from 'lucide-react'
 import * as categoryAPI from '@/lib/api/categories'
-import { mockProducts } from '@/lib/admin/mockProductsData'
 import CategoryFormModal from '@/components/admin/categories/CategoryFormModal'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
 
 export default function AdminCategoriesPage() {
   const router = useRouter()
@@ -26,6 +26,9 @@ export default function AdminCategoriesPage() {
   const [showMainOnly, setShowMainOnly] = useState(true) // Chỉ hiển thị danh mục chính
   const [categoriesList, setCategoriesList] = useState([])
   const [loading, setLoading] = useState(true)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteTargetId, setDeleteTargetId] = useState(null)
+  const [deleteMessage, setDeleteMessage] = useState('')
 
   // Load categories từ API
   useEffect(() => {
@@ -80,55 +83,68 @@ export default function AdminCategoriesPage() {
 
     // Lấy danh mục con từ API
     const subCategories = await categoryAPI.getSubCategories(categoryId)
-    const productsInCategory = mockProducts.filter(p => 
-      p.category.slug === category.slug || 
-      subCategories.some(sc => p.category.slug === sc.slug)
-    )
 
-    let confirmMessage = `Bạn có chắc chắn muốn xóa danh mục "${category.name}"?\n\n`
+    let message = `Bạn có chắc chắn muốn xóa danh mục "${category.name}"?`
     
-    if (subCategories.length > 0) {
-      confirmMessage += `⚠️ CẢNH BÁO: Hành động này sẽ xóa:\n`
-      confirmMessage += `- ${subCategories.length} danh mục con: ${subCategories.map(sc => sc.name).join(', ')}\n`
-      confirmMessage += `- ${productsInCategory.length} sản phẩm trong các danh mục này\n\n`
+    const subcategoriesCount = category.subcategories_count || 0
+    const productsCount = category.product_count || 0
+    
+    if (subcategoriesCount > 0) {
+      message += `\n\n⚠️ CẢNH BÁO: Hành động này sẽ xóa:\n- ${subcategoriesCount} danh mục con\n- ${productsCount} sản phẩm trong các danh mục này`
     } else {
-      confirmMessage += `⚠️ Sẽ xóa ${productsInCategory.length} sản phẩm trong danh mục này.\n\n`
+      message += `\n\n⚠️ Sẽ xóa ${productsCount} sản phẩm trong danh mục này.`
     }
     
-    confirmMessage += `Hành động này không thể hoàn tác!`
+    message += `\n\nHành động này không thể hoàn tác!`
 
-    if (confirm(confirmMessage)) {
-      try {
-        // Gọi API để xóa danh mục
-        const result = await categoryAPI.deleteCategory(categoryId)
-        
-        console.log('Đã xóa danh mục:', result.deleted_category)
-        console.log('Đã xóa danh mục con:', result.deleted_subcategories)
-        console.log('Cần xóa sản phẩm:', productsInCategory.map(p => p.id))
-        
-        // Reload categories từ API
-        if (showMainOnly) {
-          const categories = await categoryAPI.getMainCategories()
-          setCategoriesList(categories)
-        } else {
-          const allCategories = await categoryAPI.getCategories({ status: 'active' })
-          const filtered = searchQuery 
-            ? allCategories.filter(c => 
-                c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                c.slug.toLowerCase().includes(searchQuery.toLowerCase())
-              )
-            : allCategories
-          setCategoriesList(filtered)
-        }
-        
-        // Dispatch custom event để Header cập nhật ngay
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new Event('categoryChanged'))
-        }
-      } catch (error) {
-        console.error('Error deleting category:', error)
-        alert('Lỗi khi xóa danh mục: ' + error.message)
+    setDeleteMessage(message)
+    setDeleteTargetId(categoryId)
+    setShowDeleteConfirm(true)
+  }
+
+  const confirmDeleteCategory = async () => {
+    if (!deleteTargetId) return
+    
+    try {
+      // Gọi API để xóa danh mục
+      const result = await categoryAPI.deleteCategory(deleteTargetId)
+      
+      console.log('Đã xóa danh mục:', result.deleted_category)
+      console.log('Đã xóa danh mục con:', result.deleted_subcategories)
+      
+      // Reload categories từ API
+      if (showMainOnly) {
+        const categories = await categoryAPI.getMainCategories()
+        setCategoriesList(categories)
+      } else {
+        const allCategories = await categoryAPI.getCategories({ status: 'active' })
+        const filtered = searchQuery 
+          ? allCategories.filter(c => 
+              c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              c.slug.toLowerCase().includes(searchQuery.toLowerCase())
+            )
+          : allCategories
+        setCategoriesList(filtered)
       }
+      
+      // Dispatch custom event để Header cập nhật ngay
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('categoryChanged'))
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Đã xóa danh mục thành công!', type: 'success', duration: 3000 } 
+        }));
+      }
+    } catch (error) {
+      console.error('Error deleting category:', error)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Lỗi khi xóa danh mục: ' + error.message, type: 'error', duration: 3000 } 
+        }));
+      }
+    } finally {
+      setDeleteTargetId(null)
+      setDeleteMessage('')
+      setShowDeleteConfirm(false)
     }
   }
 
@@ -266,12 +282,6 @@ export default function AdminCategoriesPage() {
                     </tr>
                   ) : (
                     filteredCategories.map((category) => {
-                      // Subcategories sẽ được load khi cần (có thể cache trong state)
-                      const subCategories = [] // TODO: Load từ API nếu cần
-                      const productsInCategory = mockProducts.filter(p => 
-                        p.category.slug === category.slug
-                      )
-                    
                     return (
                       <tr key={category.id}>
                         <td>
@@ -323,7 +333,7 @@ export default function AdminCategoriesPage() {
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                               <Folder size={14} style={{ color: 'var(--text-tertiary)' }} />
                               <span style={{ fontWeight: 'var(--font-medium)' }}>
-                                {subCategories.length}
+                                {category.subcategories_count || 0}
                               </span>
                             </div>
                           ) : (
@@ -336,7 +346,7 @@ export default function AdminCategoriesPage() {
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                             <Package size={14} style={{ color: 'var(--text-tertiary)' }} />
                             <span style={{ fontWeight: 'var(--font-medium)' }}>
-                              {productsInCategory.length}
+                              {category.product_count || 0}
                             </span>
                           </div>
                         </td>
@@ -434,11 +444,31 @@ export default function AdminCategoriesPage() {
               }
             } catch (error) {
               console.error('Error saving category:', error)
-              alert('Lỗi khi lưu danh mục: ' + error.message)
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('showToast', { 
+                  detail: { message: 'Lỗi khi lưu danh mục: ' + error.message, type: 'error', duration: 3000 } 
+                }));
+              }
             }
           }}
         />
       )}
+
+      {/* Delete Confirm Modal */}
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={() => {
+          setShowDeleteConfirm(false)
+          setDeleteTargetId(null)
+          setDeleteMessage('')
+        }}
+        onConfirm={confirmDeleteCategory}
+        title="Xác nhận xóa"
+        message={deleteMessage}
+        confirmText="Xóa"
+        cancelText="Hủy"
+        confirmButtonClass="btn-confirm-delete"
+      />
     </div>
   )
 }

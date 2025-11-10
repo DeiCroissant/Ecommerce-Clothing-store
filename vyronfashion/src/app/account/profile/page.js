@@ -47,13 +47,21 @@ export default function ProfilePage() {
         body: JSON.stringify(updatedData),
       })
 
-      if (!response.ok) throw new Error('Cập nhật thất bại')
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || 'Cập nhật thất bại')
+      }
 
       const updated = await response.json()
       setUser(updated)
       
       // Update localStorage
       localStorage.setItem('user', JSON.stringify(updated))
+      
+      // Dispatch event to refresh overview page
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('userUpdated'))
+      }
     } catch (err) {
       console.error('Error updating:', err)
       throw err

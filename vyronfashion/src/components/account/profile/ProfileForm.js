@@ -1,19 +1,28 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Save, Loader } from 'lucide-react'
 
 export function ProfileForm({ user, onUpdate }) {
+  // Load data from database - user.name, user.email, user.phone
   const [formData, setFormData] = useState({
-    firstName: user?.firstName || '',
-    lastName: user?.lastName || '',
+    name: user?.name || '',
     email: user?.email || '',
     phone: user?.phone || '',
-    dateOfBirth: user?.dateOfBirth || '',
-    gender: user?.gender || '',
   })
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
+
+  // Update formData when user changes
+  useEffect(() => {
+    if (user) {
+      setFormData({
+        name: user.name || '',
+        email: user.email || '',
+        phone: user.phone || '',
+      })
+    }
+  }, [user])
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -27,22 +36,9 @@ export function ProfileForm({ user, onUpdate }) {
   const validate = () => {
     const newErrors = {}
 
-    if (!formData.firstName.trim()) {
-      newErrors.firstName = 'Vui lòng nhập tên'
-    }
-
-    if (!formData.lastName.trim()) {
-      newErrors.lastName = 'Vui lòng nhập họ'
-    }
-
-    if (!formData.email.trim()) {
-      newErrors.email = 'Vui lòng nhập email'
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Email không hợp lệ'
-    }
-
+    // Only validate phone (name and email are read-only)
     if (formData.phone && !/^[0-9]{10,11}$/.test(formData.phone.replace(/\s/g, ''))) {
-      newErrors.phone = 'Số điện thoại không hợp lệ'
+      newErrors.phone = 'Số điện thoại không hợp lệ (10-11 số)'
     }
 
     setErrors(newErrors)
@@ -56,11 +52,20 @@ export function ProfileForm({ user, onUpdate }) {
 
     try {
       setSaving(true)
-      await onUpdate(formData)
-      alert('Cập nhật thông tin thành công!')
+      // Only send phone (name and email are read-only)
+      await onUpdate({ phone: formData.phone })
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Cập nhật số điện thoại thành công!', type: 'success', duration: 3000 } 
+        }));
+      }
     } catch (error) {
       console.error('Error saving:', error)
-      alert('Cập nhật thất bại. Vui lòng thử lại.')
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Cập nhật thất bại. Vui lòng thử lại.', type: 'error', duration: 3000 } 
+        }));
+      }
     } finally {
       setSaving(false)
     }
@@ -68,36 +73,20 @@ export function ProfileForm({ user, onUpdate }) {
 
   return (
     <form onSubmit={handleSubmit} className="profile-form">
-      <div className="form-row">
-        <div className="form-group">
-          <label htmlFor="firstName" className="form-label">
-            Tên <span className="required">*</span>
-          </label>
-          <input
-            id="firstName"
-            name="firstName"
-            type="text"
-            value={formData.firstName}
-            onChange={handleChange}
-            className={`form-input ${errors.firstName ? 'error' : ''}`}
-          />
-          {errors.firstName && <p className="form-error">{errors.firstName}</p>}
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="lastName" className="form-label">
-            Họ <span className="required">*</span>
-          </label>
-          <input
-            id="lastName"
-            name="lastName"
-            type="text"
-            value={formData.lastName}
-            onChange={handleChange}
-            className={`form-input ${errors.lastName ? 'error' : ''}`}
-          />
-          {errors.lastName && <p className="form-error">{errors.lastName}</p>}
-        </div>
+      <div className="form-group">
+        <label htmlFor="name" className="form-label">
+          Tên <span className="required">*</span>
+        </label>
+        <input
+          id="name"
+          name="name"
+          type="text"
+          value={formData.name}
+          disabled
+          readOnly
+          className="form-input disabled"
+        />
+        <p className="form-hint">Tên không thể chỉnh sửa</p>
       </div>
 
       <div className="form-group">
@@ -109,10 +98,11 @@ export function ProfileForm({ user, onUpdate }) {
           name="email"
           type="email"
           value={formData.email}
-          onChange={handleChange}
-          className={`form-input ${errors.email ? 'error' : ''}`}
+          disabled
+          readOnly
+          className="form-input disabled"
         />
-        {errors.email && <p className="form-error">{errors.email}</p>}
+        <p className="form-hint">Email không thể chỉnh sửa</p>
       </div>
 
       <div className="form-group">
@@ -129,40 +119,7 @@ export function ProfileForm({ user, onUpdate }) {
           placeholder="0912345678"
         />
         {errors.phone && <p className="form-error">{errors.phone}</p>}
-      </div>
-
-      <div className="form-row">
-        <div className="form-group">
-          <label htmlFor="dateOfBirth" className="form-label">
-            Ngày sinh
-          </label>
-          <input
-            id="dateOfBirth"
-            name="dateOfBirth"
-            type="date"
-            value={formData.dateOfBirth}
-            onChange={handleChange}
-            className="form-input"
-          />
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="gender" className="form-label">
-            Giới tính
-          </label>
-          <select
-            id="gender"
-            name="gender"
-            value={formData.gender}
-            onChange={handleChange}
-            className="form-input"
-          >
-            <option value="">Chọn giới tính</option>
-            <option value="male">Nam</option>
-            <option value="female">Nữ</option>
-            <option value="other">Khác</option>
-          </select>
-        </div>
+        {!errors.phone && <p className="form-hint">Nhập số điện thoại của bạn (10-11 số)</p>}
       </div>
 
       <div className="form-actions">
@@ -225,8 +182,21 @@ export function ProfileForm({ user, onUpdate }) {
           box-shadow: 0 0 0 3px rgba(24, 24, 27, 0.1);
         }
 
+        .form-input.disabled {
+          background: #f4f4f5;
+          color: #71717a;
+          cursor: not-allowed;
+          border-color: #e4e4e7;
+        }
+
         .form-input.error {
           border-color: #dc2626;
+        }
+
+        .form-hint {
+          font-size: 0.75rem;
+          color: #71717a;
+          margin: 0.25rem 0 0 0;
         }
 
         .form-error {

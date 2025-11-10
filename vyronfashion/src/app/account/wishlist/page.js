@@ -66,7 +66,11 @@ export default function WishlistPage() {
       await fetchWishlist()
     } catch (error) {
       console.error('Error removing item from wishlist:', error)
-      alert('Có lỗi xảy ra khi xóa sản phẩm khỏi yêu thích')
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Có lỗi xảy ra khi xóa sản phẩm khỏi yêu thích', type: 'error', duration: 3000 } 
+        }));
+      }
     }
   }
 

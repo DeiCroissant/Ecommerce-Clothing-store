@@ -13,6 +13,7 @@ import { getProductImages } from '@/lib/mockImages';
 import * as productAPI from '@/lib/api/products';
 import * as reviewAPI from '@/lib/api/reviews';
 import * as cartAPI from '@/lib/api/cart';
+import * as wishlistAPI from '@/lib/api/wishlist';
 import ProductReviews from '@/components/product/ProductReviews';
 
 // Mock data - sẽ thay thế bằng API call sau
@@ -35,6 +36,8 @@ export default function ProductDetailPage({ params }) {
   const [confettiOrigin, setConfettiOrigin] = useState({ x: 0, y: 0 });
   const [miniCartOpen, setMiniCartOpen] = useState(false);
   const [cartItems, setCartItems] = useState([]);
+  const [isWishlisted, setIsWishlisted] = useState(false);
+  const [wishlistLoading, setWishlistLoading] = useState(false);
   const addToCartButtonRef = useRef(null);
 
   // Get current user ID
@@ -68,6 +71,27 @@ export default function ProductDetailPage({ params }) {
     };
     loadCart();
   }, []);
+
+  // Check wishlist status
+  useEffect(() => {
+    const checkWishlist = async () => {
+      const userId = getCurrentUserId();
+      if (!userId || !product) return;
+      
+      try {
+        const wishlistData = await wishlistAPI.getWishlist(userId);
+        const productIds = wishlistData.wishlist?.map(item => item.product_id) || [];
+        setIsWishlisted(productIds.includes(product.id));
+      } catch (error) {
+        console.error('Error checking wishlist:', error);
+        setIsWishlisted(false);
+      }
+    };
+    
+    if (product) {
+      checkWishlist();
+    }
+  }, [product]);
 
   // Load product từ API
   useEffect(() => {
@@ -132,45 +156,133 @@ export default function ProductDetailPage({ params }) {
     loadProduct();
   }, [slug]);
 
-  // Get images from product
-  // Combine main image and gallery images
+  // Get all images from product - prioritize selected color's images
+  // Each image includes metadata about which color it belongs to (if any)
   const productImages = product 
     ? (() => {
-        const images = [];
-        // Add main image first
-        if (product.image) {
-          images.push({ url: product.image, alt: product.name });
+        const imagesMap = new Map(); // Use Map to avoid duplicates by URL
+        const selectedColorImages = [];
+        const otherImages = [];
+        
+        // 1. Collect selected color images first (if color is selected)
+        if (selectedVariant.color && product.variants?.colors) {
+          const selectedColorObj = product.variants.colors.find(c => c.slug === selectedVariant.color);
+          if (selectedColorObj && selectedColorObj.images && selectedColorObj.images.length > 0) {
+            selectedColorObj.images.forEach((img, index) => {
+              if (!imagesMap.has(img)) {
+                const imageData = {
+                  url: img,
+                  alt: `${product.name} - ${selectedColorObj.name} - ${index + 1}`,
+                  colorSlug: selectedColorObj.slug
+                };
+                imagesMap.set(img, imageData);
+                selectedColorImages.push(imageData);
+              }
+            });
+          }
         }
-        // Add gallery images
+        
+        // 2. Add main image (if exists and not duplicate)
+        if (product.image && !imagesMap.has(product.image)) {
+          const imageData = {
+            url: product.image,
+            alt: product.name,
+            colorSlug: null
+          };
+          imagesMap.set(product.image, imageData);
+          otherImages.push(imageData);
+        }
+        
+        // 3. Add gallery images (if not duplicate)
         if (product.images && product.images.length > 0) {
           product.images.forEach(img => {
-            // Only add if not duplicate of main image
-            if (img !== product.image) {
-              images.push({ url: img, alt: `${product.name} - Gallery` });
+            if (!imagesMap.has(img)) {
+              const imageData = {
+                url: img,
+                alt: `${product.name} - Gallery`,
+                colorSlug: null
+              };
+              imagesMap.set(img, imageData);
+              otherImages.push(imageData);
             }
           });
         }
+        
+        // 4. Add other color variant images (if not duplicate)
+        if (product.variants?.colors && product.variants.colors.length > 0) {
+          product.variants.colors.forEach(color => {
+            // Skip selected color (already added)
+            if (color.slug === selectedVariant.color) return;
+            
+            if (color.images && color.images.length > 0) {
+              color.images.forEach((img, index) => {
+                if (!imagesMap.has(img)) {
+                  const imageData = {
+                    url: img,
+                    alt: `${product.name} - ${color.name} - ${index + 1}`,
+                    colorSlug: color.slug
+                  };
+                  imagesMap.set(img, imageData);
+                  otherImages.push(imageData);
+                }
+              });
+            }
+          });
+        }
+        
+        // Combine: selected color images first, then others
+        const images = [...selectedColorImages, ...otherImages];
+        
         // Fallback to mock images if no images at all
         if (images.length === 0) {
-          return getProductImages(slug);
+          return getProductImages(slug).map(img => ({
+            url: typeof img === 'string' ? img : img.url,
+            alt: typeof img === 'string' ? '' : img.alt,
+            colorSlug: null
+          }));
         }
+        
         return images;
       })()
     : [];
 
   const handleVariantChange = (variant) => {
     setSelectedVariant(variant);
+    // Reset selected image to first when color changes
+    if (variant.color !== selectedVariant.color) {
+      // ProductGallery will automatically update when productImages changes
+    }
+  };
+  
+  // Handle image click - switch to color if image belongs to a color
+  const handleImageClick = (colorSlug) => {
+    console.log('handleImageClick called with colorSlug:', colorSlug, 'current color:', selectedVariant.color);
+    if (colorSlug && colorSlug !== selectedVariant.color) {
+      console.log('Changing color to:', colorSlug);
+      setSelectedVariant(prev => ({
+        ...prev,
+        color: colorSlug
+      }));
+    }
   };
 
   const handleAddToCart = async (quantity) => {
     if (!selectedVariant.color || !selectedVariant.size) {
-      alert('Vui lòng chọn màu sắc và kích cỡ');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Vui lòng chọn màu sắc và kích cỡ', type: 'warning', duration: 3000 } 
+        }));
+      }
       return;
     }
 
     const userId = getCurrentUserId();
     if (!userId) {
-      alert('Vui lòng đăng nhập để thêm vào giỏ hàng');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Vui lòng đăng nhập để thêm vào giỏ hàng', type: 'warning', duration: 3000 } 
+        }));
+      }
       return;
     }
 
@@ -198,6 +310,11 @@ export default function ProductDetailPage({ params }) {
       const cartData = await cartAPI.getCart(userId);
       setCartItems(cartData.items || []);
 
+      // Dispatch event to update cart count in header
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('cartChanged'));
+      }
+
       // Trigger animations
       setFlyToCartActive(true);
       setConfettiActive(true);
@@ -209,7 +326,11 @@ export default function ProductDetailPage({ params }) {
       });
     } catch (error) {
       console.error('Error adding to cart:', error);
-      alert(error.message || 'Không thể thêm vào giỏ hàng');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: error.message || 'Không thể thêm vào giỏ hàng', type: 'error', duration: 3000 } 
+        }));
+      }
     }
   };
 
@@ -231,7 +352,11 @@ export default function ProductDetailPage({ params }) {
 
   const handleBuyNow = (quantity) => {
     if (!selectedVariant.color || !selectedVariant.size) {
-      alert('Vui lòng chọn màu sắc và kích cỡ');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Vui lòng chọn màu sắc và kích cỡ', type: 'warning', duration: 3000 } 
+        }));
+      }
       return;
     }
 
@@ -243,7 +368,47 @@ export default function ProductDetailPage({ params }) {
 
     // Redirect to checkout
     // router.push('/checkout');
-    alert('Chuyển đến trang thanh toán...');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('showToast', { 
+        detail: { message: 'Chuyển đến trang thanh toán...', type: 'info', duration: 2000 } 
+      }));
+    }
+  };
+
+  const handleWishlistToggle = async () => {
+    const userId = getCurrentUserId();
+    if (!userId) {
+      // Silently return if user not logged in - UI will show login prompt if needed
+      return;
+    }
+
+    if (!product) return;
+
+    try {
+      setWishlistLoading(true);
+      const result = await wishlistAPI.toggleWishlist(product.id, userId);
+      
+      // Update wishlist status
+      setIsWishlisted(result.in_wishlist || false);
+      
+      // Update product wishlist_count silently
+      if (result.in_wishlist) {
+        setProduct(prev => ({
+          ...prev,
+          wishlist_count: (prev.wishlist_count || 0) + 1
+        }));
+      } else {
+        setProduct(prev => ({
+          ...prev,
+          wishlist_count: Math.max(0, (prev.wishlist_count || 0) - 1)
+        }));
+      }
+    } catch (error) {
+      console.error('Error toggling wishlist:', error);
+      // Silently handle error - UI will show current state
+    } finally {
+      setWishlistLoading(false);
+    }
   };
 
   if (loading) {
@@ -306,6 +471,7 @@ export default function ProductDetailPage({ params }) {
             <ProductGallery 
               images={productImages} 
               productName={product.name}
+              onImageClick={handleImageClick}
             />
           </div>
 
@@ -336,6 +502,9 @@ export default function ProductDetailPage({ params }) {
                   maxStock={product.inventory?.quantity || 0}
                   onAddToCart={handleAddToCart}
                   onBuyNow={handleBuyNow}
+                  isWishlisted={isWishlisted}
+                  onWishlistToggle={handleWishlistToggle}
+                  wishlistLoading={wishlistLoading}
                 />
               </div>
             </div>

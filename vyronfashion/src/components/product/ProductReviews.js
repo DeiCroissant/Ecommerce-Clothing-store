@@ -58,12 +58,20 @@ export default function ProductReviews({ product, reviews = [], loading = false,
     
     const userId = getCurrentUserId()
     if (!userId) {
-      alert('Vui lòng đăng nhập để đánh giá sản phẩm')
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Vui lòng đăng nhập để đánh giá sản phẩm', type: 'warning', duration: 3000 } 
+        }));
+      }
       return
     }
 
     if (rating === 0) {
-      alert('Vui lòng chọn số sao đánh giá')
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Vui lòng chọn số sao đánh giá', type: 'warning', duration: 3000 } 
+        }));
+      }
       return
     }
 
@@ -80,9 +88,17 @@ export default function ProductReviews({ product, reviews = [], loading = false,
       setRating(0)
       setComment('')
       setShowForm(false)
-      alert('Cảm ơn bạn đã đánh giá sản phẩm!')
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Cảm ơn bạn đã đánh giá sản phẩm!', type: 'success', duration: 3000 } 
+        }));
+      }
     } catch (error) {
-      alert(error.message || 'Có lỗi xảy ra khi gửi đánh giá')
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: error.message || 'Có lỗi xảy ra khi gửi đánh giá', type: 'error', duration: 3000 } 
+        }));
+      }
     } finally {
       setSubmitting(false)
     }

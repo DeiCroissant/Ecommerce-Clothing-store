@@ -2,105 +2,64 @@
 
 import { useState, useEffect } from 'react';
 import ProductCard from '@/components/ui/ProductCard';
+import EnhancedProductCard from '@/components/category/EnhancedProductCard';
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
-
-// Dữ liệu mẫu - sau này sẽ fetch từ API
-const NEW_PRODUCTS = [
-  {
-    id: 1,
-    name: 'Áo Thun Cotton Premium',
-    slug: 'ao-thun-cotton-premium',
-    price: 299000,
-    originalPrice: 399000,
-    image: '/images/products/tshirt-1.jpg',
-    rating: 4.5,
-    reviewCount: 128,
-    isNew: true,
-    discount: 25
-  },
-  {
-    id: 2,
-    name: 'Quần Jean Slim Fit',
-    slug: 'quan-jean-slim-fit',
-    price: 599000,
-    originalPrice: 799000,
-    image: '/images/products/jeans-1.jpg',
-    rating: 4.8,
-    reviewCount: 95,
-    isNew: true,
-    discount: 25
-  },
-  {
-    id: 3,
-    name: 'Váy Đầm Hoa Nhẹ Nhàng',
-    slug: 'vay-dam-hoa-nhe-nhang',
-    price: 449000,
-    image: '/images/products/dress-1.jpg',
-    rating: 4.6,
-    reviewCount: 73,
-    isNew: true
-  },
-  {
-    id: 4,
-    name: 'Áo Sơ Mi Oxford',
-    slug: 'ao-so-mi-oxford',
-    price: 399000,
-    originalPrice: 499000,
-    image: '/images/products/shirt-1.jpg',
-    rating: 4.7,
-    reviewCount: 112,
-    isNew: true,
-    discount: 20
-  },
-  {
-    id: 5,
-    name: 'Quần Short Kaki',
-    slug: 'quan-short-kaki',
-    price: 349000,
-    image: '/images/products/shorts-1.jpg',
-    rating: 4.4,
-    reviewCount: 86,
-    isNew: true
-  },
-  {
-    id: 6,
-    name: 'Áo Khoác Denim',
-    slug: 'ao-khoac-denim',
-    price: 699000,
-    originalPrice: 899000,
-    image: '/images/products/jacket-1.jpg',
-    rating: 4.9,
-    reviewCount: 142,
-    isNew: true,
-    discount: 22
-  },
-  {
-    id: 7,
-    name: 'Váy Maxi Bohemian',
-    slug: 'vay-maxi-bohemian',
-    price: 549000,
-    image: '/images/products/dress-2.jpg',
-    rating: 4.5,
-    reviewCount: 67,
-    isNew: true
-  },
-  {
-    id: 8,
-    name: 'Áo Polo Classic',
-    slug: 'ao-polo-classic',
-    price: 329000,
-    originalPrice: 429000,
-    image: '/images/products/polo-1.jpg',
-    rating: 4.6,
-    reviewCount: 94,
-    isNew: true,
-    discount: 23
-  }
-];
+import * as productAPI from '@/lib/api/products';
 
 export default function NewArrivals() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [itemsPerView, setItemsPerView] = useState(4);
+  const [newProducts, setNewProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Load new products from API
+  useEffect(() => {
+    const loadNewProducts = async () => {
+      try {
+        setLoading(true);
+        // Fetch newest products (sorted by created_at desc)
+        const response = await productAPI.getProducts({
+          status: 'active',
+          sort: 'newest',
+          limit: 4, // Only show 4 newest products in carousel
+          page: 1
+        });
+        
+        if (response.products && response.products.length > 0) {
+          // Transform API products to match ProductCard format
+          const transformedProducts = response.products.map(product => ({
+            id: product.id,
+            slug: product.slug,
+            name: product.name,
+            price: product.pricing?.sale || product.pricing?.original || 0,
+            originalPrice: product.pricing?.original && product.pricing?.sale ? product.pricing.original : null,
+            image: product.image || '',
+            rating: typeof product.rating === 'number' 
+              ? product.rating 
+              : (product.rating?.average || 0),
+            reviewCount: typeof product.reviewCount === 'number'
+              ? product.reviewCount
+              : (product.rating?.count || 0),
+            isNew: true, // Mark as new for display
+            discount: product.pricing?.discount_percent || 0,
+            // Include full product data for EnhancedProductCard
+            ...product
+          }));
+          
+          setNewProducts(transformedProducts);
+        } else {
+          setNewProducts([]);
+        }
+      } catch (error) {
+        console.error('Error loading new products:', error);
+        setNewProducts([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadNewProducts();
+  }, []);
 
   // Responsive items per view
   useEffect(() => {
@@ -121,7 +80,7 @@ export default function NewArrivals() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const maxIndex = Math.max(0, NEW_PRODUCTS.length - itemsPerView);
+  const maxIndex = Math.max(0, newProducts.length - itemsPerView);
 
   const handlePrev = () => {
     setCurrentIndex((prev) => Math.max(0, prev - 1));
@@ -165,24 +124,38 @@ export default function NewArrivals() {
         </div>
 
         {/* Carousel */}
-        <div className="relative overflow-hidden">
-          <div
-            className="flex transition-transform duration-500 ease-out"
-            style={{
-              transform: `translateX(-${currentIndex * (100 / itemsPerView)}%)`
-            }}
-          >
-            {NEW_PRODUCTS.map((product) => (
-              <div
-                key={product.id}
-                className="flex-shrink-0 px-3"
-                style={{ width: `${100 / itemsPerView}%` }}
-              >
-                <ProductCard product={product} />
+        {loading ? (
+          <div className="flex gap-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="flex-shrink-0 px-3" style={{ width: `${100 / itemsPerView}%` }}>
+                <div className="bg-gray-100 rounded-lg aspect-[3/4] animate-pulse" />
               </div>
             ))}
           </div>
-        </div>
+        ) : newProducts.length > 0 ? (
+          <div className="relative overflow-hidden">
+            <div
+              className="flex transition-transform duration-500 ease-out"
+              style={{
+                transform: `translateX(-${currentIndex * (100 / itemsPerView)}%)`
+              }}
+            >
+              {newProducts.map((product) => (
+                <div
+                  key={product.id}
+                  className="flex-shrink-0 px-3"
+                  style={{ width: `${100 / itemsPerView}%` }}
+                >
+                  <EnhancedProductCard product={product} />
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-gray-500">Chưa có sản phẩm mới nào</p>
+          </div>
+        )}
 
         {/* Mobile Navigation Dots */}
         <div className="flex justify-center gap-2 mt-6 md:hidden">
@@ -202,7 +175,7 @@ export default function NewArrivals() {
         {/* View All Button */}
         <div className="text-center mt-12">
           <a
-            href="/products?filter=new"
+            href="/new-arrivals"
             className="inline-block px-8 py-3 bg-zinc-900 text-white rounded-full hover:bg-zinc-800 transition-colors font-medium"
           >
             Xem Tất Cả Sản Phẩm Mới

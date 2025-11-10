@@ -6,118 +6,13 @@
  */
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { DollarSign, ShoppingCart, Users, TrendingUp, TrendingDown, ArrowUpRight, Package, Eye, Folder, Plus, Trash2, Edit } from 'lucide-react'
 import { formatCurrency } from '@/lib/formatCurrency'
 import * as categoryAPI from '@/lib/api/categories'
+import * as dashboardAPI from '@/lib/api/adminDashboard'
 import CategoryFormModal from '@/components/admin/categories/CategoryFormModal'
-
-// Mock data
-const dashboardData = {
-  kpis: [
-    {
-      id: 'revenue',
-      title: 'Doanh thu hôm nay',
-      value: 45230000,
-      change: 12.5,
-      trend: 'up',
-      icon: DollarSign,
-      color: 'blue',
-      isCurrency: true
-    },
-    {
-      id: 'orders',
-      title: 'Đơn hôm nay',
-      value: 24,
-      change: 8.3,
-      trend: 'up',
-      icon: ShoppingCart,
-      color: 'green'
-    },
-    {
-      id: 'customers',
-      title: 'Khách mới',
-      value: 12,
-      change: -3.2,
-      trend: 'down',
-      icon: Users,
-      color: 'purple'
-    },
-    {
-      id: 'visits',
-      title: 'Lượt truy cập',
-      value: 1432,
-      change: 15.8,
-      trend: 'up',
-      icon: TrendingUp,
-      color: 'orange'
-    }
-  ],
-  pendingOrders: [
-    {
-      id: 'ORD-001234',
-      customer: 'Nguyễn Văn A',
-      total: 1250000,
-      items: 3,
-      time: '10 phút trước',
-      status: 'pending'
-    },
-    {
-      id: 'ORD-001235',
-      customer: 'Trần Thị B',
-      total: 2340000,
-      items: 5,
-      time: '25 phút trước',
-      status: 'pending'
-    },
-    {
-      id: 'ORD-001236',
-      customer: 'Lê Văn C',
-      total: 890000,
-      items: 2,
-      time: '1 giờ trước',
-      status: 'pending'
-    },
-    {
-      id: 'ORD-001237',
-      customer: 'Phạm Thị D',
-      total: 3450000,
-      items: 7,
-      time: '2 giờ trước',
-      status: 'pending'
-    },
-    {
-      id: 'ORD-001238',
-      customer: 'Hoàng Văn E',
-      total: 1560000,
-      items: 4,
-      time: '3 giờ trước',
-      status: 'pending'
-    }
-  ],
-  lowStockProducts: [
-    { id: 1, name: 'Áo Sơ Mi Nam Classic', sku: 'ASM-001', stock: 5, threshold: 10 },
-    { id: 2, name: 'Quần Jean Nữ Skinny', sku: 'QJ-002', stock: 3, threshold: 10 },
-    { id: 3, name: 'Áo Khoác Nam Bomber', sku: 'AK-003', stock: 7, threshold: 15 }
-  ]
-}
-
-// Chart data (last 14 days)
-const revenueChartData = [
-  { date: '01/11', revenue: 35000000 },
-  { date: '02/11', revenue: 42000000 },
-  { date: '03/11', revenue: 38000000 },
-  { date: '04/11', revenue: 45000000 },
-  { date: '05/11', revenue: 41000000 },
-  { date: '06/11', revenue: 48000000 },
-  { date: '07/11', revenue: 52000000 },
-  { date: '08/11', revenue: 39000000 },
-  { date: '09/11', revenue: 43000000 },
-  { date: '10/11', revenue: 47000000 },
-  { date: '11/11', revenue: 51000000 },
-  { date: '12/11', revenue: 46000000 },
-  { date: '13/11', revenue: 49000000 },
-  { date: '14/11', revenue: 45230000 }
-]
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
 
 function KPICard({ data }) {
   const Icon = data.icon
@@ -145,6 +40,14 @@ function KPICard({ data }) {
 }
 
 function SimpleRevenueChart({ data }) {
+  if (!data || data.length === 0) {
+    return (
+      <div style={{ padding: 'var(--space-16)', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+        Chưa có dữ liệu doanh thu
+      </div>
+    )
+  }
+  
   const maxRevenue = Math.max(...data.map(d => d.revenue))
   
   return (
@@ -207,6 +110,17 @@ export default function AdminDashboardPage() {
   const [showCategoryForm, setShowCategoryForm] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState(null)
   const [loadingCategories, setLoadingCategories] = useState(true)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteTargetId, setDeleteTargetId] = useState(null)
+  
+  // Dashboard data states
+  const [dashboardData, setDashboardData] = useState({
+    kpis: [],
+    revenue_chart: [],
+    pending_orders: [],
+    low_stock_products: []
+  })
+  const [loadingDashboard, setLoadingDashboard] = useState(true)
 
   const currentDate = new Date().toLocaleDateString('vi-VN', {
     weekday: 'long',
@@ -214,6 +128,57 @@ export default function AdminDashboardPage() {
     month: 'long',
     day: 'numeric'
   })
+  
+  // Load dashboard data
+  useEffect(() => {
+    const loadDashboard = async () => {
+      setLoadingDashboard(true)
+      try {
+        const data = await dashboardAPI.getDashboardStats()
+        
+        // Transform KPIs để match với component structure
+        const transformedKPIs = data.kpis.map(kpi => ({
+          id: kpi.id,
+          title: kpi.title,
+          value: kpi.value,
+          change: Math.abs(kpi.change),
+          trend: kpi.trend,
+          icon: kpi.id === 'revenue' ? DollarSign : 
+                kpi.id === 'orders' ? ShoppingCart :
+                kpi.id === 'customers' ? Users : TrendingUp,
+          color: kpi.id === 'revenue' ? 'blue' :
+                 kpi.id === 'orders' ? 'green' :
+                 kpi.id === 'customers' ? 'purple' : 'orange',
+          isCurrency: kpi.is_currency
+        }))
+        
+        setDashboardData({
+          kpis: transformedKPIs,
+          revenue_chart: data.revenue_chart || [],
+          pending_orders: data.pending_orders || [],
+          low_stock_products: data.low_stock_products || []
+        })
+      } catch (error) {
+        console.error('Error loading dashboard:', error)
+        // Keep empty state on error
+        setDashboardData({
+          kpis: [],
+          revenue_chart: [],
+          pending_orders: [],
+          low_stock_products: []
+        })
+      } finally {
+        setLoadingDashboard(false)
+      }
+    }
+    
+    loadDashboard()
+    
+    // Refresh dashboard every 5 minutes
+    const interval = setInterval(loadDashboard, 300000)
+    
+    return () => clearInterval(interval)
+  }, [])
 
   // Load categories từ API
   useEffect(() => {
@@ -243,22 +208,37 @@ export default function AdminDashboardPage() {
     }
   }, [])
 
-  const handleDeleteCategory = async (categoryId) => {
-    if (confirm('Bạn có chắc chắn muốn xóa danh mục này?')) {
-      try {
-        await categoryAPI.deleteCategory(categoryId)
-        // Reload categories
-        const mainCategories = await categoryAPI.getMainCategories()
-        setCategories(mainCategories || [])
-        
-        // Dispatch event để Header cập nhật
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new Event('categoryChanged'))
-        }
-      } catch (error) {
-        console.error('Error deleting category:', error)
-        alert('Lỗi khi xóa danh mục: ' + error.message)
+  const handleDeleteCategory = (categoryId) => {
+    setDeleteTargetId(categoryId)
+    setShowDeleteConfirm(true)
+  }
+
+  const confirmDeleteCategory = async () => {
+    if (!deleteTargetId) return
+    
+    try {
+      await categoryAPI.deleteCategory(deleteTargetId)
+      // Reload categories
+      const mainCategories = await categoryAPI.getMainCategories()
+      setCategories(mainCategories || [])
+      
+      // Dispatch event để Header cập nhật
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('categoryChanged'))
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Đã xóa danh mục thành công!', type: 'success', duration: 3000 } 
+        }));
       }
+    } catch (error) {
+      console.error('Error deleting category:', error)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Lỗi khi xóa danh mục: ' + error.message, type: 'error', duration: 3000 } 
+        }));
+      }
+    } finally {
+      setDeleteTargetId(null)
+      setShowDeleteConfirm(false)
     }
   }
 
@@ -285,7 +265,11 @@ export default function AdminDashboardPage() {
       }
     } catch (error) {
       console.error('Error saving category:', error)
-      alert('Lỗi khi lưu danh mục: ' + error.message)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Lỗi khi lưu danh mục: ' + error.message, type: 'error', duration: 3000 } 
+        }));
+      }
     }
   }
 
@@ -312,9 +296,22 @@ export default function AdminDashboardPage() {
 
       {/* KPI Cards */}
       <div className="admin-grid admin-grid-cols-4" style={{ marginBottom: 'var(--space-8)' }}>
-        {dashboardData.kpis.map(kpi => (
-          <KPICard key={kpi.id} data={kpi} />
-        ))}
+        {loadingDashboard ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="metric-card">
+              <div className="metric-card-header">
+                <div className="metric-card-title">Đang tải...</div>
+              </div>
+              <div className="metric-card-body">
+                <div className="metric-card-value">-</div>
+              </div>
+            </div>
+          ))
+        ) : (
+          dashboardData.kpis.map(kpi => (
+            <KPICard key={kpi.id} data={kpi} />
+          ))
+        )}
       </div>
 
       {/* Revenue Chart */}
@@ -326,7 +323,13 @@ export default function AdminDashboardPage() {
               <p className="admin-card-description">Biểu đồ doanh thu theo ngày (14 ngày gần nhất)</p>
             </div>
           </div>
-          <SimpleRevenueChart data={revenueChartData} />
+          {loadingDashboard ? (
+            <div style={{ padding: 'var(--space-16)', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+              Đang tải biểu đồ...
+            </div>
+          ) : (
+            <SimpleRevenueChart data={dashboardData.revenue_chart} />
+          )}
         </div>
       </div>
 
@@ -337,75 +340,87 @@ export default function AdminDashboardPage() {
           <div className="admin-card-header">
             <div>
               <h2 className="admin-card-title">Đơn cần xử lý</h2>
-              <p className="admin-card-description">5 đơn hàng mới nhất chờ xác nhận</p>
+              <p className="admin-card-description">
+                {dashboardData.pending_orders.length > 0 
+                  ? `${dashboardData.pending_orders.length} đơn hàng${dashboardData.pending_orders.length > 1 ? '' : ''} chờ xác nhận`
+                  : 'Chưa có đơn hàng nào chờ xử lý'
+                }
+              </p>
             </div>
-            <span className="admin-badge admin-badge-warning">
-              {dashboardData.pendingOrders.length} đơn
-            </span>
+            {dashboardData.pending_orders.length > 0 && (
+              <span className="admin-badge admin-badge-warning">
+                {dashboardData.pending_orders.length} đơn
+              </span>
+            )}
           </div>
           <div className="admin-table-container" style={{ border: 'none' }}>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Mã đơn</th>
-                  <th>Khách hàng</th>
-                  <th className="admin-table-cell-right">Tổng tiền</th>
-                  <th>Thời gian</th>
-                  <th className="admin-table-cell-center">Hành động</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dashboardData.pendingOrders.map(order => (
-                  <tr key={order.id}>
-                    <td>
-                      <span style={{ 
-                        fontWeight: 'var(--font-semibold)',
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: 'var(--text-xs)'
-                      }}>
-                        {order.id}
-                      </span>
-                    </td>
-                    <td>{order.customer}</td>
-                    <td className="admin-table-cell-right">
-                      <span style={{ fontWeight: 'var(--font-semibold)' }}>
-                        {formatCurrency(order.total)}
-                      </span>
-                    </td>
-                    <td>
-                      <span style={{ 
-                        fontSize: 'var(--text-xs)',
-                        color: 'var(--text-tertiary)'
-                      }}>
-                        {order.time}
-                      </span>
-                    </td>
-                    <td className="admin-table-cell-center">
-                      <div className="admin-table-actions">
-                        <button 
-                          className="admin-btn admin-btn-sm admin-btn-primary"
-                          title="Xác nhận đơn hàng"
-                        >
-                          Xác nhận
-                        </button>
-                        <button 
-                          className="admin-btn admin-btn-sm admin-btn-ghost"
-                          title="Xem chi tiết"
-                        >
-                          <Eye size={16} />
-                        </button>
-                      </div>
-                    </td>
+            {loadingDashboard ? (
+              <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+                Đang tải...
+              </div>
+            ) : dashboardData.pending_orders.length === 0 ? (
+              <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+                Không có đơn hàng nào chờ xử lý
+              </div>
+            ) : (
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Mã đơn</th>
+                    <th>Khách hàng</th>
+                    <th className="admin-table-cell-right">Tổng tiền</th>
+                    <th>Thời gian</th>
+                    <th className="admin-table-cell-center">Hành động</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {dashboardData.pending_orders.map(order => (
+                    <tr key={order.id}>
+                      <td>
+                        <span style={{ 
+                          fontWeight: 'var(--font-semibold)',
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 'var(--text-xs)'
+                        }}>
+                          {order.order_number}
+                        </span>
+                      </td>
+                      <td>{order.customer_name}</td>
+                      <td className="admin-table-cell-right">
+                        <span style={{ fontWeight: 'var(--font-semibold)' }}>
+                          {formatCurrency(order.total_amount)}
+                        </span>
+                      </td>
+                      <td>
+                        <span style={{ 
+                          fontSize: 'var(--text-xs)',
+                          color: 'var(--text-tertiary)'
+                        }}>
+                          {order.time_ago}
+                        </span>
+                      </td>
+                      <td className="admin-table-cell-center">
+                        <div className="admin-table-actions">
+                          <Link
+                            href={`/admin/orders/${order.id}`}
+                            className="admin-btn admin-btn-sm admin-btn-ghost"
+                            title="Xem chi tiết"
+                          >
+                            <Eye size={16} />
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
           <div className="admin-card-footer">
-            <button className="admin-btn admin-btn-ghost admin-btn-sm">
+            <Link href="/admin/orders" className="admin-btn admin-btn-ghost admin-btn-sm">
               Xem tất cả đơn hàng
               <ArrowUpRight size={16} />
-            </button>
+            </Link>
           </div>
         </div>
 
@@ -414,74 +429,95 @@ export default function AdminDashboardPage() {
           <div className="admin-card-header">
             <div>
               <h2 className="admin-card-title">Sản phẩm sắp hết hàng</h2>
-              <p className="admin-card-description">Cần nhập thêm hàng</p>
+              <p className="admin-card-description">
+                {dashboardData.low_stock_products.length > 0
+                  ? `${dashboardData.low_stock_products.length} sản phẩm${dashboardData.low_stock_products.length > 1 ? '' : ''} cần nhập thêm hàng`
+                  : 'Tất cả sản phẩm đều đủ hàng'
+                }
+              </p>
             </div>
-            <span className="admin-badge admin-badge-danger">
-              {dashboardData.lowStockProducts.length} sản phẩm
-            </span>
+            {dashboardData.low_stock_products.length > 0 && (
+              <span className="admin-badge admin-badge-danger">
+                {dashboardData.low_stock_products.length} sản phẩm
+              </span>
+            )}
           </div>
           <div className="admin-table-container" style={{ border: 'none' }}>
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Sản phẩm</th>
-                  <th>SKU</th>
-                  <th className="admin-table-cell-center">Tồn kho</th>
-                  <th className="admin-table-cell-center">Hành động</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dashboardData.lowStockProducts.map(product => {
-                  const stockPercentage = (product.stock / product.threshold) * 100
-                  const stockColor = stockPercentage < 30 ? 'var(--error-600)' : 'var(--warning-600)'
-                  
-                  return (
-                    <tr key={product.id}>
-                      <td>
-                        <div style={{ fontWeight: 'var(--font-medium)' }}>
-                          {product.name}
-                        </div>
-                      </td>
-                      <td>
-                        <span style={{ 
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: 'var(--text-xs)',
-                          color: 'var(--text-tertiary)'
-                        }}>
-                          {product.sku}
-                        </span>
-                      </td>
-                      <td className="admin-table-cell-center">
-                        <span style={{ 
-                          fontWeight: 'var(--font-bold)',
-                          color: stockColor
-                        }}>
-                          {product.stock}
-                        </span>
-                        <span style={{ 
-                          fontSize: 'var(--text-xs)',
-                          color: 'var(--text-tertiary)'
-                        }}>
-                          {' '}/ {product.threshold}
-                        </span>
-                      </td>
-                      <td className="admin-table-cell-center">
-                        <button className="admin-btn admin-btn-sm admin-btn-secondary">
-                          <Package size={14} />
-                          Nhập hàng
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+            {loadingDashboard ? (
+              <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+                Đang tải...
+              </div>
+            ) : dashboardData.low_stock_products.length === 0 ? (
+              <div style={{ padding: 'var(--space-8)', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+                Tất cả sản phẩm đều đủ hàng
+              </div>
+            ) : (
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Sản phẩm</th>
+                    <th>SKU</th>
+                    <th className="admin-table-cell-center">Tồn kho</th>
+                    <th className="admin-table-cell-center">Hành động</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dashboardData.low_stock_products.map(product => {
+                    const stockPercentage = (product.stock / product.threshold) * 100
+                    const stockColor = stockPercentage < 30 ? 'var(--error-600)' : 'var(--warning-600)'
+                    
+                    return (
+                      <tr key={product.id}>
+                        <td>
+                          <div style={{ fontWeight: 'var(--font-medium)' }}>
+                            {product.name}
+                          </div>
+                        </td>
+                        <td>
+                          <span style={{ 
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 'var(--text-xs)',
+                            color: 'var(--text-tertiary)'
+                          }}>
+                            {product.sku}
+                          </span>
+                        </td>
+                        <td className="admin-table-cell-center">
+                          <span style={{ 
+                            fontWeight: 'var(--font-bold)',
+                            color: stockColor
+                          }}>
+                            {product.stock}
+                          </span>
+                          <span style={{ 
+                            fontSize: 'var(--text-xs)',
+                            color: 'var(--text-tertiary)'
+                          }}>
+                            {' '}/ {product.threshold}
+                          </span>
+                        </td>
+                        <td className="admin-table-cell-center">
+                          <Link
+                            href={`/admin/products`}
+                            className="admin-btn admin-btn-sm admin-btn-secondary"
+                            title="Quản lý sản phẩm"
+                          >
+                            <Package size={14} />
+                            Nhập hàng
+                          </Link>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
           <div className="admin-card-footer">
-            <button className="admin-btn admin-btn-ghost admin-btn-sm">
+            <Link href="/admin/products" className="admin-btn admin-btn-ghost admin-btn-sm">
               Xem tất cả sản phẩm
               <ArrowUpRight size={16} />
-            </button>
+            </Link>
           </div>
         </div>
       </div>
@@ -656,6 +692,21 @@ export default function AdminDashboardPage() {
           onSave={handleSaveCategory}
         />
       )}
+
+      {/* Delete Confirm Modal */}
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={() => {
+          setShowDeleteConfirm(false)
+          setDeleteTargetId(null)
+        }}
+        onConfirm={confirmDeleteCategory}
+        title="Xác nhận xóa"
+        message="Bạn có chắc chắn muốn xóa danh mục này?"
+        confirmText="Xóa"
+        cancelText="Hủy"
+        confirmButtonClass="btn-confirm-delete"
+      />
     </div>
   )
 }

@@ -1,23 +1,70 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 
-export default function ProductGallery({ images, productName }) {
+export default function ProductGallery({ images, productName, onImageClick }) {
   const [selectedImage, setSelectedImage] = useState(0);
   const [isZoomed, setIsZoomed] = useState(false);
 
   // Normalize images - đảm bảo format đúng
   const normalizedImages = images.map((img, index) => {
     if (typeof img === 'string') {
-      return { url: img, alt: `${productName} - Ảnh ${index + 1}` };
+      return { url: img, alt: `${productName} - Ảnh ${index + 1}`, colorSlug: null };
     }
     return {
       url: img.url || img.src || '',
-      alt: img.alt || `${productName} - Ảnh ${index + 1}`
+      alt: img.alt || `${productName} - Ảnh ${index + 1}`,
+      colorSlug: img.colorSlug || null // Preserve color metadata
     };
   }).filter(img => img.url && img.url.trim() !== ''); // Lọc bỏ images không có URL
+
+  // Reset to first image when images array changes (e.g., when color is selected)
+  // Use ref to track previous images to detect structural changes
+  const prevImagesRef = useRef(images);
+  
+  useEffect(() => {
+    // Check if images array structure changed (not just same array reference)
+    const imagesChanged = JSON.stringify(prevImagesRef.current) !== JSON.stringify(images);
+    
+    if (imagesChanged) {
+      // Reset to first image when images change (e.g., color selection changes image order)
+      setSelectedImage(0);
+      prevImagesRef.current = images;
+    }
+  }, [images]);
+  
+  // Handle image click - if image belongs to a color, switch to that color
+  const handleImageClick = (index) => {
+    // Validate index
+    if (index < 0 || index >= normalizedImages.length) {
+      console.warn('Invalid image index:', index, 'out of', normalizedImages.length);
+      return;
+    }
+    
+    console.log('Image clicked:', index, 'Total images:', normalizedImages.length);
+    console.log('Image data:', normalizedImages[index]);
+    
+    // Use functional update to ensure we get the latest state
+    setSelectedImage(prev => {
+      console.log('Setting selectedImage from', prev, 'to', index);
+      return index;
+    });
+    
+    // Get image data
+    const image = normalizedImages[index];
+    
+    // If image belongs to a color and onImageClick callback is provided, trigger it
+    // Use setTimeout to ensure state update happens first
+    if (image && image.colorSlug && onImageClick) {
+      console.log('Switching to color:', image.colorSlug);
+      // Small delay to ensure state update completes
+      setTimeout(() => {
+        onImageClick(image.colorSlug);
+      }, 10);
+    }
+  };
   
   // Check if image is base64 (data:image/...)
   const isBase64Image = (url) => {
@@ -56,12 +103,18 @@ export default function ProductGallery({ images, productName }) {
           return (
             <button
               key={index}
-              onClick={() => setSelectedImage(index)}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleImageClick(index);
+              }}
               className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${
                 selectedImage === index
                   ? 'border-blue-600 shadow-md'
                   : 'border-gray-200 hover:border-gray-300'
               }`}
+              title={image.colorSlug ? `Thuộc màu: ${image.colorSlug}` : ''}
             >
               {isValidUrl ? (
                 isBase64Image(image.url) ? (
@@ -166,12 +219,18 @@ export default function ProductGallery({ images, productName }) {
             return (
               <button
                 key={index}
-                onClick={() => setSelectedImage(index)}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleImageClick(index);
+                }}
                 className={`relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
                   selectedImage === index
                     ? 'border-blue-600 shadow-md'
                     : 'border-gray-200'
                 }`}
+                title={image.colorSlug ? `Thuộc màu: ${image.colorSlug}` : ''}
               >
                 {isValidUrl ? (
                   isBase64Image(image.url) ? (

@@ -46,3 +46,20 @@ export async function createOrder(orderData) {
   }
 }
 
+export async function getOrderById(orderId) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/orders/${orderId}`);
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error('Không tìm thấy đơn hàng');
+      }
+      const error = await response.json();
+      throw new Error(error.detail || 'Không thể lấy chi tiết đơn hàng');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching order:', error);
+    throw error;
+  }
+}
+

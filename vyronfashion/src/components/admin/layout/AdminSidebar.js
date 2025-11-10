@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -15,8 +15,11 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-  ChevronDown
+  ChevronDown,
+  RefreshCw,
+  Sparkles
 } from 'lucide-react'
+import * as adminOrderAPI from '@/lib/api/adminOrders'
 
 /**
  * Admin Sidebar Navigation
@@ -35,11 +38,10 @@ const navigationGroups = [
         href: '/admin/orders', 
         label: 'Đơn hàng', 
         icon: ShoppingBag,
-        badge: 12,
+        badge: null, // Will be set dynamically
         submenu: [
           { href: '/admin/orders', label: 'Tất cả đơn hàng' },
-          { href: '/admin/orders/pending', label: 'Chờ xử lý' },
-          { href: '/admin/orders/cancelled', label: 'Đã hủy' }
+          { href: '/admin/returns', label: 'Yêu cầu đổi trả & Hoàn tiền' }
         ]
       },
       { 
@@ -48,9 +50,7 @@ const navigationGroups = [
         icon: Package,
         submenu: [
           { href: '/admin/products', label: 'Tất cả sản phẩm' },
-          { href: '/admin/products/new', label: 'Thêm mới' },
-          { href: '/admin/products/categories', label: 'Danh mục' },
-          { href: '/admin/products/attributes', label: 'Thuộc tính' }
+          { href: '/admin/products/categories', label: 'Danh mục' }
         ]
       },
       { href: '/admin/customers', label: 'Khách hàng', icon: Users }
@@ -91,8 +91,7 @@ const navigationGroups = [
         icon: Settings,
         submenu: [
           { href: '/admin/settings/store', label: 'Cài đặt cửa hàng' },
-          { href: '/admin/settings/payments', label: 'Thanh toán & Vận chuyển' },
-          { href: '/admin/settings/admins', label: 'Quản trị viên & Phân quyền' }
+          { href: '/admin/settings/payments', label: 'Thanh toán & Vận chuyển' }
         ]
       }
     ]
@@ -103,6 +102,24 @@ export function AdminSidebar({ isOpen, onClose }) {
   const pathname = usePathname()
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [expandedMenus, setExpandedMenus] = useState({})
+  const [pendingOrdersCount, setPendingOrdersCount] = useState(0)
+
+  // Fetch pending orders count
+  useEffect(() => {
+    const fetchPendingCount = async () => {
+      try {
+        const count = await adminOrderAPI.getPendingOrdersCount()
+        setPendingOrdersCount(count)
+      } catch (error) {
+        console.error('Error fetching pending orders count:', error)
+      }
+    }
+
+    fetchPendingCount()
+    // Refresh count every 30 seconds
+    const interval = setInterval(fetchPendingCount, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   const isItemActive = (href) => {
     if (href === '/admin') {
@@ -133,8 +150,10 @@ export function AdminSidebar({ isOpen, onClose }) {
         {/* Header */}
         <div className="sidebar-header">
           <Link href="/admin" className="sidebar-logo">
-            <div className="sidebar-logo-icon">V</div>
-            <span className="sidebar-logo-text">VyronAdmin</span>
+            <div className="sidebar-logo-icon">
+              <Sparkles size={20} />
+            </div>
+            <span className="sidebar-logo-text">VyronFashion</span>
           </Link>
           
           {/* Desktop Toggle */}
@@ -178,7 +197,10 @@ export function AdminSidebar({ isOpen, onClose }) {
                           >
                             <Icon className="sidebar-nav-item-icon" size={20} />
                             <span className="sidebar-nav-item-text">{item.label}</span>
-                            {item.badge && (
+                            {item.href === '/admin/orders' && pendingOrdersCount > 0 && (
+                              <span className="sidebar-nav-item-badge">{pendingOrdersCount}</span>
+                            )}
+                            {item.href !== '/admin/orders' && item.badge && (
                               <span className="sidebar-nav-item-badge">{item.badge}</span>
                             )}
                             <ChevronDown 
@@ -211,7 +233,10 @@ export function AdminSidebar({ isOpen, onClose }) {
                         >
                           <Icon className="sidebar-nav-item-icon" size={20} />
                           <span className="sidebar-nav-item-text">{item.label}</span>
-                          {item.badge && (
+                          {item.href === '/admin/orders' && pendingOrdersCount > 0 && (
+                            <span className="sidebar-nav-item-badge">{pendingOrdersCount}</span>
+                          )}
+                          {item.href !== '/admin/orders' && item.badge && (
                             <span className="sidebar-nav-item-badge">{item.badge}</span>
                           )}
                         </Link>

@@ -36,6 +36,10 @@ products_collection = database.products
 reviews_collection = database.reviews
 orders_collection = database.orders
 cart_collection = database.cart
+addresses_collection = database.addresses
+coupons_collection = database.coupons
+returns_collection = database.returns
+settings_collection = database.settings
 
 # Sync MongoDB client for validation (optional)
 sync_client = MongoClient(MONGODB_URL)

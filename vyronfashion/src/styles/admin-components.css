@@ -693,6 +693,17 @@
   }
 }
 
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .admin-dropdown-item {
   width: 100%;
   display: flex;
@@ -804,13 +815,16 @@
 .admin-grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
 .admin-grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
 .admin-grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
+.admin-grid-cols-5 { grid-template-columns: repeat(5, 1fr); }
 
 @media (max-width: 1200px) {
+  .admin-grid-cols-5 { grid-template-columns: repeat(3, 1fr); }
   .admin-grid-cols-4 { grid-template-columns: repeat(2, 1fr); }
   .admin-grid-cols-3 { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 768px) {
+  .admin-grid-cols-5,
   .admin-grid-cols-4,
   .admin-grid-cols-3,
   .admin-grid-cols-2 { 

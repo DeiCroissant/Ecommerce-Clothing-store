@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Camera, Upload, X } from 'lucide-react'
 import Image from 'next/image'
 
@@ -9,49 +9,87 @@ export function AvatarUpload({ user, onUpdate }) {
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef(null)
 
+  // Update preview when user changes
+  useEffect(() => {
+    setPreview(user?.avatar || null)
+  }, [user?.avatar])
+
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
 
     // Validate file
     if (!file.type.startsWith('image/')) {
-      alert('Vui lòng chọn file ảnh')
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Vui lòng chọn file ảnh', type: 'warning', duration: 3000 } 
+        }));
+      }
       return
     }
 
     if (file.size > 2 * 1024 * 1024) {
-      alert('Kích thước ảnh không được vượt quá 2MB')
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Kích thước ảnh không được vượt quá 2MB', type: 'warning', duration: 3000 } 
+        }));
+      }
       return
     }
 
-    // Create preview
+    // Convert to base64
     const reader = new FileReader()
-    reader.onload = (e) => {
-      setPreview(e.target?.result)
+    reader.onload = async (event) => {
+      const base64Image = event.target?.result
+      if (!base64Image) return
+      
+      setPreview(base64Image)
+
+      // Upload to database
+      try {
+        setUploading(true)
+        await onUpdate({ avatar: base64Image })
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('showToast', { 
+            detail: { message: 'Cập nhật ảnh đại diện thành công!', type: 'success', duration: 3000 } 
+          }));
+        }
+      } catch (error) {
+        console.error('Error uploading:', error)
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('showToast', { 
+            detail: { message: 'Tải ảnh lên thất bại', type: 'error', duration: 3000 } 
+          }));
+        }
+        // Revert preview on error
+        setPreview(user?.avatar || null)
+      } finally {
+        setUploading(false)
+      }
     }
     reader.readAsDataURL(file)
-
-    // Upload
-    try {
-      setUploading(true)
-      // TODO: Implement actual upload
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      await onUpdate({ avatar: preview })
-    } catch (error) {
-      console.error('Error uploading:', error)
-      alert('Tải ảnh lên thất bại')
-    } finally {
-      setUploading(false)
-    }
   }
 
   const handleRemove = async () => {
+    if (!confirm('Bạn có chắc chắn muốn xóa ảnh đại diện?')) {
+      return
+    }
     try {
       setPreview(null)
-      await onUpdate({ avatar: null })
+      await onUpdate({ avatar: '' })
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Đã xóa ảnh đại diện', type: 'success', duration: 3000 } 
+        }));
+      }
     } catch (error) {
       console.error('Error removing avatar:', error)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Xóa ảnh thất bại', type: 'error', duration: 3000 } 
+        }));
+      }
+      setPreview(user?.avatar || null)
     }
   }
 
@@ -60,12 +98,21 @@ export function AvatarUpload({ user, onUpdate }) {
       <div className="avatar-preview">
         {preview ? (
           <div className="avatar-image">
-            <Image
-              src={preview}
-              alt="Avatar"
-              fill
-              className="object-cover"
-            />
+            {preview.startsWith('data:image/') || preview.startsWith('http') || preview.startsWith('/') ? (
+              <Image
+                src={preview}
+                alt="Avatar"
+                fill
+                className="object-cover"
+                unoptimized={preview.startsWith('data:image/')}
+              />
+            ) : (
+              <img
+                src={preview}
+                alt="Avatar"
+                className="object-cover w-full h-full"
+              />
+            )}
             <button
               onClick={handleRemove}
               className="avatar-remove"
@@ -125,6 +172,12 @@ export function AvatarUpload({ user, onUpdate }) {
           border-radius: 50%;
           overflow: hidden;
           border: 4px solid #f4f4f5;
+        }
+
+        .avatar-image img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
         }
 
         .avatar-placeholder {
