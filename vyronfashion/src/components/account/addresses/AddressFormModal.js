@@ -1,17 +1,34 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Save } from 'lucide-react'
 
 export function AddressFormModal({ address, onSave, onClose }) {
+  // Get user info from localStorage
+  const getUserInfo = () => {
+    if (typeof window !== 'undefined') {
+      const userStr = localStorage.getItem('user')
+      if (userStr) {
+        try {
+          return JSON.parse(userStr)
+        } catch (e) {
+          return null
+        }
+      }
+    }
+    return null
+  }
+
+  const user = getUserInfo()
+
   const [formData, setFormData] = useState({
-    fullName: address?.fullName || '',
-    phone: address?.phone || '',
+    fullName: address?.full_name || address?.fullName || user?.name || '',
+    phone: address?.phone || user?.phone || '',
+    email: address?.email || user?.email || '',
     street: address?.street || '',
     ward: address?.ward || '',
-    district: address?.district || '',
     city: address?.city || '',
-    isDefault: address?.isDefault || false,
+    isDefault: address?.is_default || address?.isDefault || false,
   })
   const [saving, setSaving] = useState(false)
 
@@ -57,7 +74,12 @@ export function AddressFormModal({ address, onSave, onClose }) {
               value={formData.fullName}
               onChange={handleChange}
               required
+              disabled={!!user?.name}
+              className={user?.name ? 'disabled-input' : ''}
             />
+            {user?.name && (
+              <p className="form-hint">Thông tin từ tài khoản của bạn</p>
+            )}
           </div>
 
           <div className="form-group">
@@ -69,7 +91,28 @@ export function AddressFormModal({ address, onSave, onClose }) {
               value={formData.phone}
               onChange={handleChange}
               required
+              disabled={!!user?.phone}
+              className={user?.phone ? 'disabled-input' : ''}
             />
+            {user?.phone && (
+              <p className="form-hint">Thông tin từ tài khoản của bạn</p>
+            )}
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="email">Email</label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              value={formData.email}
+              onChange={handleChange}
+              disabled={!!user?.email}
+              className={user?.email ? 'disabled-input' : ''}
+            />
+            {user?.email && (
+              <p className="form-hint">Thông tin từ tài khoản của bạn</p>
+            )}
           </div>
 
           <div className="form-group">
@@ -85,7 +128,6 @@ export function AddressFormModal({ address, onSave, onClose }) {
             />
           </div>
 
-          <div className="form-row">
             <div className="form-group">
               <label htmlFor="ward">Phường/Xã *</label>
               <input
@@ -96,19 +138,6 @@ export function AddressFormModal({ address, onSave, onClose }) {
                 onChange={handleChange}
                 required
               />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="district">Quận/Huyện *</label>
-              <input
-                id="district"
-                name="district"
-                type="text"
-                value={formData.district}
-                onChange={handleChange}
-                required
-              />
-            </div>
           </div>
 
           <div className="form-group">
@@ -230,6 +259,19 @@ export function AddressFormModal({ address, onSave, onClose }) {
           outline: none;
           border-color: #18181b;
           box-shadow: 0 0 0 3px rgba(24, 24, 27, 0.1);
+        }
+
+        .form-group input.disabled-input {
+          background: #f4f4f5;
+          color: #71717a;
+          cursor: not-allowed;
+        }
+
+        .form-hint {
+          font-size: 0.75rem;
+          color: #71717a;
+          margin: 0.25rem 0 0 0;
+          font-style: italic;
         }
 
         .form-row {

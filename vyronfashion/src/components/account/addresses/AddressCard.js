@@ -3,9 +3,11 @@
 import { MapPin, Edit2, Trash2, Star } from 'lucide-react'
 
 export function AddressCard({ address, onEdit, onDelete }) {
+  const isDefault = address.is_default || address.isDefault
+  
   return (
-    <div className={`address-card ${address.isDefault ? 'default' : ''}`}>
-      {address.isDefault && (
+    <div className={`address-card ${isDefault ? 'default' : ''}`}>
+      {isDefault && (
         <div className="default-badge">
           <Star size={14} fill="currentColor" />
           Mặc định
@@ -17,7 +19,7 @@ export function AddressCard({ address, onEdit, onDelete }) {
           <MapPin size={20} />
         </div>
         <div className="address-info">
-          <h3 className="address-name">{address.fullName}</h3>
+          <h3 className="address-name">{address.full_name || address.fullName}</h3>
           <p className="address-phone">{address.phone}</p>
         </div>
       </div>
@@ -25,7 +27,7 @@ export function AddressCard({ address, onEdit, onDelete }) {
       <div className="address-body">
         <p className="address-street">{address.street}</p>
         <p className="address-location">
-          {[address.ward, address.district, address.city].filter(Boolean).join(', ')}
+          {[address.ward, address.city].filter(Boolean).join(', ')}
         </p>
       </div>
 
@@ -57,6 +59,7 @@ export function AddressCard({ address, onEdit, onDelete }) {
         .address-card.default {
           border-color: #18181b;
           background: #fafafa;
+          border-width: 2px;
         }
 
         .default-badge {

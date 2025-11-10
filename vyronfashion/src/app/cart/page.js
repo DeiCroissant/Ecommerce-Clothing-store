@@ -19,25 +19,8 @@ import {
 import { HeartIcon } from '@heroicons/react/24/solid';
 import * as cartAPI from '@/lib/api/cart';
 import * as productAPI from '@/lib/api/products';
-
-// Mock promo codes
-const PROMO_CODES = {
-  'WELCOME10': { discount: 10, type: 'percentage', minOrder: 200000 },
-  'SUMMER2024': { discount: 50000, type: 'fixed', minOrder: 500000 },
-  'FREESHIP': { discount: 30000, type: 'shipping', minOrder: 0 },
-  'VIP20': { discount: 20, type: 'percentage', minOrder: 1000000 }
-};
-
-// Mock provinces for shipping estimator
-const PROVINCES = [
-  { id: 'hanoi', name: 'Hà Nội', shippingFee: 30000, estimatedDays: '1-2' },
-  { id: 'hcm', name: 'TP. Hồ Chí Minh', shippingFee: 30000, estimatedDays: '1-2' },
-  { id: 'danang', name: 'Đà Nẵng', shippingFee: 35000, estimatedDays: '2-3' },
-  { id: 'haiphong', name: 'Hải Phòng', shippingFee: 32000, estimatedDays: '2-3' },
-  { id: 'cantho', name: 'Cần Thơ', shippingFee: 40000, estimatedDays: '3-4' },
-  { id: 'binhduong', name: 'Bình Dương', shippingFee: 28000, estimatedDays: '1-2' },
-  { id: 'other', name: 'Tỉnh thành khác', shippingFee: 45000, estimatedDays: '4-5' }
-];
+import * as addressAPI from '@/lib/api/addresses';
+import { validateCoupon } from '@/lib/api/adminCoupons';
 
 export default function CartPage() {
   const [cartItems, setCartItems] = useState([]);
@@ -56,8 +39,16 @@ export default function CartPage() {
   const [giftMessage, setGiftMessage] = useState('');
   const giftWrapPrice = 15000;
   
-  // Shipping estimator states
-  const [selectedProvince, setSelectedProvince] = useState(null);
+  // Shipping address states
+  const [selectedAddress, setSelectedAddress] = useState(null);
+  const [addresses, setAddresses] = useState([]);
+  const [loadingAddresses, setLoadingAddresses] = useState(false);
+
+  // Shipping states
+  const [allShippingOptions, setAllShippingOptions] = useState([]);
+  const [shippingOptions, setShippingOptions] = useState([]);
+  const [selectedShipping, setSelectedShipping] = useState(null);
+  const [loadingShipping, setLoadingShipping] = useState(true);
 
   // Get current user ID
   const getCurrentUserId = () => {
@@ -104,12 +95,13 @@ export default function CartPage() {
               const sizeObj = product?.variants?.sizes?.find(s => s.name === item.variant_size) ||
                              { name: item.variant_size || 'N/A', available: true, stock: 0 };
               
-              // Normalize image URL
+              // Normalize image URL - support base64 images too
               const rawImage = item.product_image || product?.image || '';
               const validImage = rawImage && (
                 rawImage.startsWith('/') || 
                 rawImage.startsWith('http://') || 
-                rawImage.startsWith('https://')
+                rawImage.startsWith('https://') ||
+                rawImage.startsWith('data:image/')
               ) ? rawImage : '';
               
               return {
@@ -138,12 +130,13 @@ export default function CartPage() {
             } catch (error) {
               console.error('Error loading product for cart item:', error);
               // Return basic item if product fetch fails
-              // Normalize image URL
+              // Normalize image URL - support base64 images too
               const rawImage = item.product_image || '';
               const validImage = rawImage && (
                 rawImage.startsWith('/') || 
                 rawImage.startsWith('http://') || 
-                rawImage.startsWith('https://')
+                rawImage.startsWith('https://') ||
+                rawImage.startsWith('data:image/')
               ) ? rawImage : '';
               
               return {
@@ -182,28 +175,115 @@ export default function CartPage() {
     loadCart();
   }, []);
 
+  // Load user addresses
+  useEffect(() => {
+    const loadAddresses = async () => {
+      const userId = getCurrentUserId();
+      if (!userId) return;
+
+      try {
+        setLoadingAddresses(true);
+        const response = await addressAPI.getUserAddresses(userId);
+        setAddresses(response.addresses || []);
+        
+        // Auto-select default address if available
+        const defaultAddress = response.addresses?.find(addr => addr.is_default);
+        if (defaultAddress) {
+          setSelectedAddress(defaultAddress);
+        }
+      } catch (error) {
+        console.error('Error loading addresses:', error);
+      } finally {
+        setLoadingAddresses(false);
+      }
+    };
+
+    loadAddresses();
+  }, []);
+
+  // Load shipping options
+  useEffect(() => {
+    const loadShippingOptions = async () => {
+      try {
+        setLoadingShipping(true);
+        const response = await fetch('http://localhost:8000/api/settings/payments');
+        const data = await response.json();
+
+        if (data.success) {
+          const enabledShipping = data.shipping_methods.filter(s => s.enabled);
+          setAllShippingOptions(enabledShipping);
+        } else {
+          throw new Error('Failed to fetch shipping methods');
+        }
+      } catch (e) {
+        console.error('Error loading shipping options:', e);
+        const defaultShipping = [
+          { id: 'standard', name: 'Giao hàng tiêu chuẩn', description: '3-5 ngày', price: 30000, enabled: true, min_order: 0 },
+          { id: 'fast', name: 'Giao hàng nhanh', description: '1-2 ngày', price: 50000, enabled: true, min_order: 0 },
+          { id: 'free', name: 'Miễn phí vận chuyển', description: '5-7 ngày', price: 0, enabled: true, min_order: 500000 },
+        ];
+        setAllShippingOptions(defaultShipping);
+      } finally {
+        setLoadingShipping(false);
+      }
+    };
+    loadShippingOptions();
+  }, []);
+
   // Calculate totals
   const subtotal = cartItems.reduce((sum, item) => sum + (item.price.sale * item.quantity), 0);
-  const shippingThreshold = 500000;
-  
-  // Calculate shipping fee
-  let shippingFee = 30000; // Default
-  if (selectedProvince) {
-    shippingFee = selectedProvince.shippingFee;
-  }
-  if (subtotal >= shippingThreshold || (appliedPromo && appliedPromo.type === 'shipping')) {
+
+  // Filter shipping options based on subtotal and select default
+  useEffect(() => {
+    const availableOptions = allShippingOptions.filter(option => 
+      !option.min_order || subtotal >= option.min_order
+    );
+    setShippingOptions(availableOptions);
+
+    const isSelectedStillAvailable = availableOptions.find(
+      option => option.id === selectedShipping?.id
+    );
+
+    if (!isSelectedStillAvailable) {
+      if (availableOptions.length > 0) {
+        setSelectedShipping(availableOptions[0]);
+      } else {
+        setSelectedShipping(null);
+      }
+    }
+  }, [subtotal, allShippingOptions, selectedShipping]);
+
+  // Save selected shipping to local storage
+  useEffect(() => {
+    if (selectedShipping) {
+      localStorage.setItem('selectedShipping', JSON.stringify(selectedShipping));
+    } else {
+      localStorage.removeItem('selectedShipping');
+    }
+  }, [selectedShipping]);
+
+  let shippingFee = selectedShipping ? selectedShipping.price : 0;
+  if (appliedPromo && appliedPromo.type === 'shipping') {
     shippingFee = 0;
   }
   
   // Calculate discount
   let discount = 0;
   if (appliedPromo) {
-    if (appliedPromo.type === 'percentage') {
-      discount = Math.round(subtotal * appliedPromo.discount / 100);
-    } else if (appliedPromo.type === 'fixed') {
-      discount = appliedPromo.discount;
-    } else if (appliedPromo.type === 'shipping') {
-      discount = shippingFee;
+    // Sử dụng discount_amount từ API nếu có (đã tính sẵn với max_discount)
+    if (appliedPromo.discount_amount !== undefined) {
+      discount = appliedPromo.discount_amount;
+    } else {
+      // Fallback: tính lại nếu không có discount_amount (backward compatibility)
+      if (appliedPromo.type === 'percentage') {
+        discount = Math.round(subtotal * appliedPromo.discount / 100);
+        // Áp dụng max_discount nếu có
+        if (appliedPromo.maxDiscount && discount > appliedPromo.maxDiscount) {
+          discount = appliedPromo.maxDiscount;
+        }
+      } else if (appliedPromo.type === 'fixed') {
+        discount = Math.min(appliedPromo.discount, subtotal);
+      }
     }
   }
   
@@ -238,6 +318,10 @@ export default function CartPage() {
     try {
       setIsUpdating(true);
       await cartAPI.updateCartItemQuantity(userId, item.itemIndex, newQuantity);
+      // Dispatch event to update cart count in header
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('cartChanged'));
+      }
     } catch (error) {
       console.error('Error updating quantity:', error);
       // Revert on error
@@ -270,6 +354,10 @@ export default function CartPage() {
     // Delete via API
     try {
       await cartAPI.removeCartItem(userId, item.itemIndex);
+      // Dispatch event to update cart count in header
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('cartChanged'));
+      }
     } catch (error) {
       console.error('Error deleting item:', error);
       // Revert on error
@@ -298,6 +386,11 @@ export default function CartPage() {
         deletedItem.size,
         deletedItem.quantity
       );
+      
+      // Dispatch event to update cart count in header
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('cartChanged'));
+      }
       
       // Reload cart to get updated indices
       const cartData = await cartAPI.getCart(userId);
@@ -375,13 +468,17 @@ export default function CartPage() {
       
       setCartItems(transformedItems);
       setDeletedItem(null);
+      // Dispatch event to update cart count in header
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('cartChanged'));
+      }
     } catch (error) {
       console.error('Error undoing delete:', error);
     }
   };
 
   // Handle promo code
-  const handleApplyPromo = () => {
+  const handleApplyPromo = async () => {
     setPromoError('');
     
     const code = promoCode.toUpperCase().trim();
@@ -390,19 +487,31 @@ export default function CartPage() {
       return;
     }
     
-    const promo = PROMO_CODES[code];
-    if (!promo) {
-      setPromoError('Mã giảm giá không hợp lệ');
-      return;
+    try {
+      const response = await validateCoupon(code, subtotal);
+      
+      if (!response.valid) {
+        setPromoError(response.message || 'Mã giảm giá không hợp lệ');
+        return;
+      }
+      
+      // Map coupon từ API sang format của cart
+      const coupon = response.coupon;
+      const promo = {
+        code: coupon.code,
+        discount: coupon.discount_value,
+        type: coupon.discount_type, // 'percentage' hoặc 'fixed'
+        minOrder: coupon.min_order_amount,
+        maxDiscount: coupon.max_discount,
+        discount_amount: response.discount_amount
+      };
+      
+      setAppliedPromo(promo);
+      setPromoCode('');
+    } catch (error) {
+      console.error('Error validating coupon:', error);
+      setPromoError('Có lỗi xảy ra khi kiểm tra mã giảm giá');
     }
-    
-    if (subtotal < promo.minOrder) {
-      setPromoError(`Đơn hàng tối thiểu ${promo.minOrder.toLocaleString('vi-VN')}₫`);
-      return;
-    }
-    
-    setAppliedPromo({ code, ...promo });
-    setPromoCode('');
   };
 
   const handleRemovePromo = () => {
@@ -559,11 +668,12 @@ export default function CartPage() {
                 giftWrapPrice={giftWrapPrice}
               />
 
-              {/* Shipping Estimator */}
-              <ShippingEstimator
-                selectedProvince={selectedProvince}
-                setSelectedProvince={setSelectedProvince}
-                provinces={PROVINCES}
+              {/* Shipping Method Selector */}
+              <ShippingMethodSelector
+                shippingOptions={shippingOptions}
+                selectedShipping={selectedShipping}
+                onSelectShipping={setSelectedShipping}
+                loading={loadingShipping}
               />
             </div>
 
@@ -585,12 +695,12 @@ export default function CartPage() {
                 discount={discount}
                 appliedPromo={appliedPromo}
                 shippingFee={shippingFee}
-                shippingThreshold={shippingThreshold}
                 tax={tax}
                 giftWrap={giftWrap}
                 giftWrapPrice={giftWrapPrice}
                 total={total}
-                selectedProvince={selectedProvince}
+                selectedShipping={selectedShipping}
+                shippingOptions={shippingOptions}
               />
             </div>
           </div>
@@ -651,11 +761,12 @@ function CartItemCard({ item, onQuantityChange, onDelete, onSaveForLater, isUpda
     ? (item.price.original - item.price.sale) * quantity 
     : 0;
 
-  // Normalize image URL
+  // Normalize image URL - support base64 images too
   const isValidImageUrl = item.image && (
     item.image.startsWith('/') || 
     item.image.startsWith('http://') || 
-    item.image.startsWith('https://')
+    item.image.startsWith('https://') ||
+    item.image.startsWith('data:image/')
   );
   const imageUrl = isValidImageUrl ? item.image : '/placeholder-product.jpg';
 
@@ -666,14 +777,22 @@ function CartItemCard({ item, onQuantityChange, onDelete, onSaveForLater, isUpda
         <Link href={item.slug ? `/products/${item.slug}` : '#'} className="flex-shrink-0">
           <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-lg overflow-hidden bg-gray-100">
             {isValidImageUrl ? (
-              <Image
-                src={imageUrl}
-                alt={item.name}
-                fill
-                className="object-cover hover:scale-105 transition-transform"
-                sizes="128px"
-                unoptimized={imageUrl.startsWith('http') && !imageUrl.includes('localhost')}
-              />
+              imageUrl.startsWith('data:image/') ? (
+                <img
+                  src={imageUrl}
+                  alt={item.name}
+                  className="w-full h-full object-cover hover:scale-105 transition-transform"
+                />
+              ) : (
+                <Image
+                  src={imageUrl}
+                  alt={item.name}
+                  fill
+                  className="object-cover hover:scale-105 transition-transform"
+                  sizes="128px"
+                  unoptimized={imageUrl.startsWith('http') && !imageUrl.includes('localhost')}
+                />
+              )
             ) : (
               <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">
                 No image
@@ -898,22 +1017,6 @@ function PromoCodeSection({ promoCode, setPromoCode, appliedPromo, promoError, o
               {promoError}
             </p>
           )}
-
-          {/* Sample codes hint */}
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-            <p className="text-xs text-blue-800 font-medium mb-2">Mã giảm giá khả dụng:</p>
-            <div className="flex flex-wrap gap-2">
-              <code className="text-xs bg-white px-2 py-1 rounded border border-blue-200 cursor-pointer hover:bg-blue-100" onClick={() => setPromoCode('WELCOME10')}>
-                WELCOME10
-              </code>
-              <code className="text-xs bg-white px-2 py-1 rounded border border-blue-200 cursor-pointer hover:bg-blue-100" onClick={() => setPromoCode('SUMMER2024')}>
-                SUMMER2024
-              </code>
-              <code className="text-xs bg-white px-2 py-1 rounded border border-blue-200 cursor-pointer hover:bg-blue-100" onClick={() => setPromoCode('FREESHIP')}>
-                FREESHIP
-              </code>
-            </div>
-          </div>
         </div>
       ) : (
         <div className="p-4 bg-green-50 rounded-lg border-2 border-green-200">
@@ -991,52 +1094,59 @@ function GiftWrapSection({ giftWrap, setGiftWrap, giftMessage, setGiftMessage, g
   );
 }
 
-// Shipping Estimator Component
-function ShippingEstimator({ selectedProvince, setSelectedProvince, provinces }) {
+// Shipping Method Selector Component
+function ShippingMethodSelector({ shippingOptions, selectedShipping, onSelectShipping, loading }) {
   return (
     <div className="bg-white rounded-lg shadow-sm p-6">
       <div className="flex items-center gap-2 mb-4">
-        <MapPinIcon className="w-5 h-5 text-purple-600" />
-        <h3 className="font-semibold text-gray-900">Ước tính vận chuyển</h3>
+        <svg className="w-6 h-6 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
+        </svg>
+        <h2 className="text-xl font-semibold text-gray-900">Phương thức vận chuyển</h2>
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Chọn tỉnh/thành phố
-        </label>
-        <select
-          value={selectedProvince?.id || ''}
-          onChange={(e) => {
-            const province = provinces.find(p => p.id === e.target.value);
-            setSelectedProvince(province);
-          }}
-          className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-        >
-          <option value="">-- Chọn địa điểm --</option>
-          {provinces.map((province) => (
-            <option key={province.id} value={province.id}>
-              {province.name}
-            </option>
-          ))}
-        </select>
-
-        {selectedProvince && (
-          <div className="mt-4 p-3 bg-purple-50 rounded-lg border border-purple-200 animate-slide-up">
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-gray-700">Phí vận chuyển:</span>
-              <span className="font-semibold text-gray-900">
-                {selectedProvince.shippingFee.toLocaleString('vi-VN')}₫
-              </span>
+      {loading ? (
+        <div className="text-center py-4">
+          <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {shippingOptions.length > 0 ? (
+            shippingOptions.map(option => (
+              <label key={option.id} className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                selectedShipping?.id === option.id ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+              }`}>
+                <input
+                  type="radio"
+                  name="shipping"
+                  value={option.id}
+                  checked={selectedShipping?.id === option.id}
+                  onChange={() => onSelectShipping(option)}
+                  className="w-5 h-5"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="font-semibold text-gray-900">{option.name}</p>
+                    <p className="font-semibold text-blue-600">
+                      {option.price === 0 ? 'Miễn phí' : `${option.price.toLocaleString('vi-VN')}₫`}
+                    </p>
+                  </div>
+                  <p className="text-sm text-gray-600">{option.description}</p>
+                  {option.min_order > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Áp dụng cho đơn hàng từ {option.min_order.toLocaleString('vi-VN')}₫
+                    </p>
+                  )}
+                </div>
+              </label>
+            ))
+          ) : (
+            <div className="text-center py-4 text-gray-500">
+              Không có phương thức vận chuyển khả dụng cho giỏ hàng của bạn.
             </div>
-            <div className="flex justify-between items-center text-sm mt-2">
-              <span className="text-gray-700">Thời gian dự kiến:</span>
-              <span className="font-semibold text-gray-900">
-                {selectedProvince.estimatedDays} ngày
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1103,15 +1213,23 @@ function OrderSummary({
   discount, 
   appliedPromo, 
   shippingFee, 
-  shippingThreshold, 
   tax, 
   giftWrap, 
   giftWrapPrice, 
   total,
-  selectedProvince
+  selectedShipping,
+  shippingOptions
 }) {
-  const progressToFreeShipping = Math.min((subtotal / shippingThreshold) * 100, 100);
-  const amountToFreeShipping = shippingThreshold - subtotal;
+  const freeShippingOption = shippingOptions.find(opt => opt.price === 0 && opt.min_order > 0);
+  const shippingThreshold = freeShippingOption ? freeShippingOption.min_order : 0;
+
+  const amountToFreeShipping = shippingThreshold > subtotal 
+    ? shippingThreshold - subtotal 
+    : 0;
+
+  const progressToFreeShipping = shippingThreshold > 0 
+    ? Math.min((subtotal / shippingThreshold) * 100, 100) 
+    : 0;
 
   return (
     <div className="bg-white rounded-lg shadow-sm p-6">
@@ -1165,10 +1283,7 @@ function OrderSummary({
         
         <div className="flex justify-between text-gray-600">
           <span className="flex items-center gap-1">
-            Phí vận chuyển
-            {selectedProvince && (
-              <span className="text-xs text-gray-500">({selectedProvince.name})</span>
-            )}:
+            Phí vận chuyển:
           </span>
           <span className="font-medium">
             {shippingFee === 0 ? (

@@ -16,7 +16,7 @@ export function OrderDetailHeader({ order }) {
         <h1 className="order-title">Chi Tiết Đơn Hàng</h1>
         
         <div className="order-meta">
-          <span className="order-id">{order.id}</span>
+          <span className="order-id">{order.orderNumber || order.order_number || order.id}</span>
           <span className="separator">•</span>
           <span 
             className={`status-pill status-${order.status}`}
@@ -28,7 +28,7 @@ export function OrderDetailHeader({ order }) {
             {statusInfo.label}
           </span>
           <span className="separator">•</span>
-          <span className="order-date">{formatDate(order.orderDate)}</span>
+          <span className="order-date">{formatDate(order.orderDate || order.date || order.created_at)}</span>
         </div>
       </div>
     </div>

@@ -60,6 +60,12 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
         }
       }))
     } else if (product) {
+      // Ensure colors have images field
+      const normalizedColors = (product.variants?.colors || []).map(color => ({
+        ...color,
+        images: color.images || []
+      }))
+      
       setFormData({
         name: product.name || '',
         slug: product.slug || '',
@@ -75,7 +81,10 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
         short_description: product.short_description || '',
         image: product.image || '',
         images: product.images || [],
-        variants: product.variants || { colors: [], sizes: [] },
+        variants: {
+          colors: normalizedColors,
+          sizes: product.variants?.sizes || []
+        },
         inventory: product.inventory || {
           in_stock: true,
           quantity: 0,
@@ -129,7 +138,7 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
       ...prev,
       variants: {
         ...prev.variants,
-        colors: [...prev.variants.colors, { name: '', slug: '', hex: '#000000', available: true }]
+        colors: [...prev.variants.colors, { name: '', slug: '', hex: '#000000', available: true, images: [] }]
       }
     }))
   }
@@ -456,57 +465,193 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
               </button>
             </div>
             {formData.variants.colors.map((color, index) => (
-              <div key={index} className="admin-grid admin-grid-cols-4" style={{ gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
-                <input
-                  type="text"
-                  className="admin-input"
-                  placeholder="Tên màu"
-                  value={color.name}
-                  onChange={(e) => {
-                    const newColors = [...formData.variants.colors]
-                    newColors[index].name = e.target.value
-                    setFormData(prev => ({
-                      ...prev,
-                      variants: { ...prev.variants, colors: newColors }
-                    }))
-                  }}
-                />
-                <input
-                  type="text"
-                  className="admin-input"
-                  placeholder="Slug"
-                  value={color.slug}
-                  onChange={(e) => {
-                    const newColors = [...formData.variants.colors]
-                    newColors[index].slug = e.target.value
-                    setFormData(prev => ({
-                      ...prev,
-                      variants: { ...prev.variants, colors: newColors }
-                    }))
-                  }}
-                />
-                <input
-                  type="color"
-                  className="admin-input"
-                  value={color.hex}
-                  onChange={(e) => {
-                    const newColors = [...formData.variants.colors]
-                    newColors[index].hex = e.target.value
-                    setFormData(prev => ({
-                      ...prev,
-                      variants: { ...prev.variants, colors: newColors }
-                    }))
-                  }}
-                  style={{ height: '42px' }}
-                />
-                <button
-                  type="button"
-                  className="admin-btn admin-btn-sm admin-btn-ghost"
-                  onClick={() => removeColor(index)}
-                  style={{ color: 'var(--error-600)' }}
-                >
-                  <Trash2 size={16} />
-                </button>
+              <div key={index} style={{ marginBottom: 'var(--space-4)', padding: 'var(--space-4)', border: '1px solid var(--border)', borderRadius: 'var(--radius-base)' }}>
+                <div className="admin-grid admin-grid-cols-4" style={{ gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+                  <input
+                    type="text"
+                    className="admin-input"
+                    placeholder="Tên màu"
+                    value={color.name || ''}
+                    onChange={(e) => {
+                      const newColors = [...formData.variants.colors]
+                      if (!newColors[index]) newColors[index] = { name: '', slug: '', hex: '#000000', images: [] }
+                      newColors[index].name = e.target.value
+                      setFormData(prev => ({
+                        ...prev,
+                        variants: { ...prev.variants, colors: newColors }
+                      }))
+                    }}
+                  />
+                  <input
+                    type="text"
+                    className="admin-input"
+                    placeholder="Slug"
+                    value={color.slug || ''}
+                    onChange={(e) => {
+                      const newColors = [...formData.variants.colors]
+                      if (!newColors[index]) newColors[index] = { name: '', slug: '', hex: '#000000', images: [] }
+                      newColors[index].slug = e.target.value
+                      setFormData(prev => ({
+                        ...prev,
+                        variants: { ...prev.variants, colors: newColors }
+                      }))
+                    }}
+                  />
+                  <input
+                    type="color"
+                    className="admin-input"
+                    value={color.hex || '#000000'}
+                    onChange={(e) => {
+                      const newColors = [...formData.variants.colors]
+                      if (!newColors[index]) newColors[index] = { name: '', slug: '', hex: '#000000', images: [] }
+                      newColors[index].hex = e.target.value
+                      setFormData(prev => ({
+                        ...prev,
+                        variants: { ...prev.variants, colors: newColors }
+                      }))
+                    }}
+                    style={{ height: '42px' }}
+                  />
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn-sm admin-btn-ghost"
+                    onClick={() => removeColor(index)}
+                    style={{ color: 'var(--error-600)' }}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+                
+                {/* Upload ảnh cho màu này */}
+                <div style={{ marginTop: 'var(--space-3)' }}>
+                  <label className="admin-label" style={{ marginBottom: 'var(--space-2)' }}>
+                    Hình ảnh cho màu này
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files)
+                      if (files.length === 0) return
+                      
+                      // Validate all files
+                      for (const file of files) {
+                        if (file.size > 5 * 1024 * 1024) {
+                          if (typeof window !== 'undefined') {
+                            window.dispatchEvent(new CustomEvent('showToast', { 
+                              detail: { message: `File "${file.name}" có kích thước vượt quá 5MB`, type: 'warning', duration: 3000 } 
+                            }));
+                          }
+                          return
+                        }
+                        if (!file.type.startsWith('image/')) {
+                          if (typeof window !== 'undefined') {
+                            window.dispatchEvent(new CustomEvent('showToast', { 
+                              detail: { message: `File "${file.name}" không phải là hình ảnh`, type: 'warning', duration: 3000 } 
+                            }));
+                          }
+                          return
+                        }
+                      }
+                      
+                      // Convert all files to base64
+                      const promises = files.map(file => {
+                        return new Promise((resolve) => {
+                          const reader = new FileReader()
+                          reader.onloadend = () => resolve(reader.result)
+                          reader.readAsDataURL(file)
+                        })
+                      })
+                      
+                      Promise.all(promises).then(base64Images => {
+                        const newColors = [...formData.variants.colors]
+                        if (!newColors[index]) newColors[index] = { name: '', slug: '', hex: '#000000', images: [] }
+                        newColors[index].images = [...(newColors[index].images || []), ...base64Images]
+                        setFormData(prev => ({
+                          ...prev,
+                          variants: { ...prev.variants, colors: newColors }
+                        }))
+                        e.target.value = ''
+                      })
+                    }}
+                    style={{ display: 'none' }}
+                    id={`color-images-upload-${index}`}
+                  />
+                  <label
+                    htmlFor={`color-images-upload-${index}`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-2)',
+                      padding: 'var(--space-2) var(--space-3)',
+                      backgroundColor: 'var(--neutral-100)',
+                      color: 'var(--text-primary)',
+                      borderRadius: 'var(--radius-base)',
+                      cursor: 'pointer',
+                      fontSize: 'var(--text-xs)',
+                      border: '1px solid var(--border)'
+                    }}
+                  >
+                    <Upload size={14} />
+                    Thêm ảnh cho màu này
+                  </label>
+                  
+                  {/* Preview ảnh của màu */}
+                  {(color.images && color.images.length > 0) && (
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
+                      gap: 'var(--space-2)',
+                      marginTop: 'var(--space-3)'
+                    }}>
+                      {color.images.map((img, imgIndex) => (
+                        <div key={imgIndex} style={{ position: 'relative' }}>
+                          <img
+                            src={img}
+                            alt={`${color.name || 'Màu'} - ${imgIndex + 1}`}
+                            style={{
+                              width: '100%',
+                              height: '80px',
+                              objectFit: 'cover',
+                              borderRadius: 'var(--radius-sm)',
+                              border: '1px solid var(--border)'
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newColors = [...formData.variants.colors]
+                              newColors[index].images = newColors[index].images.filter((_, i) => i !== imgIndex)
+                              setFormData(prev => ({
+                                ...prev,
+                                variants: { ...prev.variants, colors: newColors }
+                              }))
+                            }}
+                            style={{
+                              position: 'absolute',
+                              top: '4px',
+                              right: '4px',
+                              width: '20px',
+                              height: '20px',
+                              borderRadius: '50%',
+                              backgroundColor: 'var(--error-600)',
+                              color: 'white',
+                              border: 'none',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '12px'
+                            }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -664,13 +809,21 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
                     for (const file of files) {
                       // Validate file size (max 5MB)
                       if (file.size > 5 * 1024 * 1024) {
-                        alert(`File "${file.name}" có kích thước vượt quá 5MB`)
+                        if (typeof window !== 'undefined') {
+                          window.dispatchEvent(new CustomEvent('showToast', { 
+                            detail: { message: `File "${file.name}" có kích thước vượt quá 5MB`, type: 'warning', duration: 3000 } 
+                          }));
+                        }
                         return
                       }
                       
                       // Validate file type
                       if (!file.type.startsWith('image/')) {
-                        alert(`File "${file.name}" không phải là hình ảnh`)
+                        if (typeof window !== 'undefined') {
+                          window.dispatchEvent(new CustomEvent('showToast', { 
+                            detail: { message: `File "${file.name}" không phải là hình ảnh`, type: 'warning', duration: 3000 } 
+                          }));
+                        }
                         return
                       }
                     }

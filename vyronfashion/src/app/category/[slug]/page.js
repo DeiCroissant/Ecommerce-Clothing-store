@@ -110,18 +110,120 @@ export default function CategoryPage({ params }) {
       // Import product API
       const productAPI = await import('@/lib/api/products');
       
-      // Gọi API với category slug
-      const response = await productAPI.getProducts({
-        category_slug: slug,
+      // Check if any filters are active
+      const hasActiveFilters = 
+        (activeFilters.category && activeFilters.category.length > 0) ||
+        (activeFilters.size && activeFilters.size.length > 0) ||
+        (activeFilters.color && activeFilters.color.length > 0) ||
+        (activeFilters.brand && activeFilters.brand.length > 0) ||
+        (activeFilters.material && activeFilters.material.length > 0) ||
+        (activeFilters.features && activeFilters.features.length > 0) ||
+        (activeFilters.priceRange && activeFilters.priceRange.min !== undefined && activeFilters.priceRange.max !== undefined);
+      
+      // Build query params - skip category_slug if slug is "all"
+      const queryParams = {
         status: 'active',
-        page: currentPage,
-        limit: 24,
         sort: currentSort
-      });
+      };
+      
+      // Only add category_slug if slug is not "all"
+      if (slug && slug !== 'all') {
+        queryParams.category_slug = slug;
+      }
+      
+      // If filters are active, fetch all products (large limit) for client-side filtering
+      // Otherwise, use pagination
+      if (hasActiveFilters) {
+        queryParams.limit = 1000; // Fetch a large number to ensure all products are available for filtering
+        queryParams.page = 1;
+      } else {
+        queryParams.limit = 24;
+        queryParams.page = currentPage;
+      }
+      
+      const response = await productAPI.getProducts(queryParams);
 
-      setProducts(response.products || []);
-      setTotalProducts(response.total || 0);
-      setHasMore(currentPage < response.totalPages);
+      // Client-side filtering (temporary until backend supports filter params)
+      let filteredProducts = response.products || [];
+      
+      // Filter by category if selected
+      if (activeFilters.category && activeFilters.category.length > 0) {
+        filteredProducts = filteredProducts.filter(product => 
+          activeFilters.category.includes(product.category?.slug)
+        );
+      }
+      
+      // Filter by price range if selected
+      if (activeFilters.priceRange && activeFilters.priceRange.min !== undefined && activeFilters.priceRange.max !== undefined) {
+        filteredProducts = filteredProducts.filter(product => {
+          const price = product.pricing?.sale || 0;
+          return price >= activeFilters.priceRange.min && price <= activeFilters.priceRange.max;
+        });
+      }
+      
+      // Filter by size if selected (check if product has the size in variants)
+      if (activeFilters.size && activeFilters.size.length > 0) {
+        filteredProducts = filteredProducts.filter(product => {
+          if (!product.variants?.sizes) return false;
+          const productSizes = product.variants.sizes.map(s => s?.name || s);
+          return activeFilters.size.some(size => productSizes.includes(size));
+        });
+      }
+      
+      // Filter by color if selected
+      if (activeFilters.color && activeFilters.color.length > 0) {
+        filteredProducts = filteredProducts.filter(product => {
+          if (!product.variants?.colors) return false;
+          const productColors = product.variants.colors.map(c => c?.slug || c);
+          return activeFilters.color.some(color => productColors.includes(color));
+        });
+      }
+      
+      // Filter by brand if selected
+      if (activeFilters.brand && activeFilters.brand.length > 0) {
+        filteredProducts = filteredProducts.filter(product => 
+          activeFilters.brand.includes(product.brand?.slug)
+        );
+      }
+      
+      // Filter by material if selected
+      if (activeFilters.material && activeFilters.material.length > 0) {
+        filteredProducts = filteredProducts.filter(product => 
+          activeFilters.material.some(material => 
+            product.attributes?.material?.toLowerCase().includes(material.toLowerCase())
+          )
+        );
+      }
+      
+      // Filter by features if selected
+      if (activeFilters.features && activeFilters.features.length > 0) {
+        filteredProducts = filteredProducts.filter(product => {
+          if (activeFilters.features.includes('in_stock')) {
+            if (!product.inventory?.in_stock) return false;
+          }
+          if (activeFilters.features.includes('on_sale')) {
+            if (!product.pricing?.discount_percent || product.pricing.discount_percent === 0) return false;
+          }
+          // Add more feature checks as needed
+          return true;
+        });
+      }
+      
+      // Update total count after filtering
+      const filteredTotal = filteredProducts.length;
+      
+      // Apply pagination to filtered results if filters are active
+      // Otherwise, products are already paginated from API
+      let finalProducts = filteredProducts;
+      if (hasActiveFilters) {
+        const startIndex = (currentPage - 1) * 24;
+        const endIndex = startIndex + 24;
+        finalProducts = filteredProducts.slice(startIndex, endIndex);
+      }
+      
+      setProducts(finalProducts);
+      setTotalProducts(hasActiveFilters ? filteredTotal : response.total || 0);
+      setHasMore(hasActiveFilters ? (currentPage * 24 < filteredTotal) : (currentPage < response.totalPages));
       
       // Mock filter options (có thể tạo API riêng sau)
       const mockFilterOptions = generateMockFilterOptions();
@@ -308,6 +410,9 @@ function ProductGridSkeleton() {
 
 // Helper Functions
 function getCategoryName(slug) {
+  if (slug === 'all') {
+    return 'Toàn Bộ Sản Phẩm';
+  }
   const categories = {
     'ao-thun': 'Áo Thun',
     'ao-nam': 'Áo Nam',

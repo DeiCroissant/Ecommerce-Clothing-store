@@ -15,6 +15,7 @@ import * as categoryAPI from '@/lib/api/categories'
 import * as productAPI from '@/lib/api/products'
 import CategoryFormModal from '@/components/admin/categories/CategoryFormModal'
 import ProductFormModal from '@/components/admin/products/ProductFormModal'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
 
 export default function CategoryDetailPage() {
   const params = useParams()
@@ -28,6 +29,8 @@ export default function CategoryDetailPage() {
   const [showSubCategoryForm, setShowSubCategoryForm] = useState(false)
   const [showProductForm, setShowProductForm] = useState(false)
   const [selectedSubCategory, setSelectedSubCategory] = useState(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteTargetId, setDeleteTargetId] = useState(null)
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [viewMode, setViewMode] = useState('subcategories') // 'subcategories' or 'products'
   const [selectedSubCategoryId, setSelectedSubCategoryId] = useState(null)
@@ -100,23 +103,38 @@ export default function CategoryDetailPage() {
     )
   }
 
-  const handleDeleteSubCategory = async (subCategoryId) => {
-    if (confirm('Bạn có chắc chắn muốn xóa danh mục con này?')) {
-      try {
-        await categoryAPI.deleteCategory(subCategoryId)
-        
-        // Reload subcategories
-        const subCategoriesData = await categoryAPI.getSubCategories(categoryId)
-        setSubCategories(subCategoriesData || [])
-        
-        // Dispatch custom event để Header cập nhật ngay
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new Event('categoryChanged'))
-        }
-      } catch (error) {
-        console.error('Error deleting subcategory:', error)
-        alert('Lỗi khi xóa danh mục con: ' + error.message)
+  const handleDeleteSubCategory = (subCategoryId) => {
+    setDeleteTargetId(subCategoryId)
+    setShowDeleteConfirm(true)
+  }
+
+  const confirmDeleteSubCategory = async () => {
+    if (!deleteTargetId) return
+    
+    try {
+      await categoryAPI.deleteCategory(deleteTargetId)
+      
+      // Reload subcategories
+      const subCategoriesData = await categoryAPI.getSubCategories(categoryId)
+      setSubCategories(subCategoriesData || [])
+      
+      // Dispatch custom event để Header cập nhật ngay
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('categoryChanged'))
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Đã xóa danh mục con thành công!', type: 'success', duration: 3000 } 
+        }));
       }
+    } catch (error) {
+      console.error('Error deleting subcategory:', error)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Lỗi khi xóa danh mục con: ' + error.message, type: 'error', duration: 3000 } 
+        }));
+      }
+    } finally {
+      setDeleteTargetId(null)
+      setShowDeleteConfirm(false)
     }
   }
 
@@ -146,7 +164,11 @@ export default function CategoryDetailPage() {
       }
     } catch (error) {
       console.error('Error saving subcategory:', error)
-      alert('Lỗi khi lưu danh mục con: ' + error.message)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Lỗi khi lưu danh mục con: ' + error.message, type: 'error', duration: 3000 } 
+        }));
+      }
     }
   }
 
@@ -187,7 +209,11 @@ export default function CategoryDetailPage() {
     setSelectedProduct(null)
     } catch (error) {
       console.error('Error saving product:', error)
-      alert('Lỗi khi lưu sản phẩm: ' + error.message)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Lỗi khi lưu sản phẩm: ' + error.message, type: 'error', duration: 3000 } 
+        }));
+      }
     }
   }
 
@@ -514,6 +540,21 @@ export default function CategoryDetailPage() {
           onSave={handleSaveProduct}
         />
       )}
+
+      {/* Delete Confirm Modal */}
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={() => {
+          setShowDeleteConfirm(false)
+          setDeleteTargetId(null)
+        }}
+        onConfirm={confirmDeleteSubCategory}
+        title="Xác nhận xóa"
+        message="Bạn có chắc chắn muốn xóa danh mục con này?"
+        confirmText="Xóa"
+        cancelText="Hủy"
+        confirmButtonClass="btn-confirm-delete"
+      />
     </div>
   )
 }

@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import AuthModal from '../ui/AuthModal';
 import { ArrowRightOnRectangleIcon, UserCircleIcon } from '@heroicons/react/24/outline';
 import * as categoryAPI from '@/lib/api/categories';
+import * as cartAPI from '@/lib/api/cart';
 
 function AccountDropdown({ user, onLogout, onAccountOverview, onAdmin, open, onClose }) {
   const dropdownRef = useRef();
@@ -80,6 +81,7 @@ export default function Header() {
   // Simple toast state
   const [toast, setToast] = useState({ visible: false, message: '', kind: 'success' });
   const [categories, setCategories] = useState([]);
+  const [cartCount, setCartCount] = useState(0);
   const router = useRouter();
 
   // Load categories từ API
@@ -147,6 +149,56 @@ export default function Header() {
       setUser(userLS ? JSON.parse(userLS) : null);
     }
   }, []);
+
+  // Load cart count
+  useEffect(() => {
+    const loadCartCount = async () => {
+      try {
+        if (typeof window !== 'undefined') {
+          const userStr = localStorage.getItem('user');
+          if (userStr) {
+            const user = JSON.parse(userStr);
+            const userId = user.id || user._id;
+            if (userId) {
+              const cart = await cartAPI.getCart(userId);
+              if (cart && cart.items && Array.isArray(cart.items)) {
+                // Calculate total quantity of all items
+                const totalQuantity = cart.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+                setCartCount(totalQuantity);
+              } else {
+                setCartCount(0);
+              }
+            } else {
+              setCartCount(0);
+            }
+          } else {
+            setCartCount(0);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading cart count:', error);
+        setCartCount(0);
+      }
+    };
+
+    loadCartCount();
+
+    // Listen for cart changes
+    const handleCartChange = () => {
+      loadCartCount();
+    };
+    
+    window.addEventListener('cartChanged', handleCartChange);
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'user') {
+        loadCartCount();
+      }
+    });
+
+    return () => {
+      window.removeEventListener('cartChanged', handleCartChange);
+    };
+  }, [user]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -271,17 +323,32 @@ export default function Header() {
             />
 
             {/* Cart Icon with Badge */}
-            <Link 
-              href="/cart" 
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                if (!user) {
+                  setShowAuth(true);
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('showToast', { 
+                      detail: { message: 'Vui lòng đăng nhập để xem giỏ hàng', type: 'warning', duration: 3000 } 
+                    }));
+                  }
+                } else {
+                  router.push('/cart');
+                }
+              }}
               className="relative text-zinc-700 hover:text-zinc-900 transition-colors"
               data-cart-icon
               title="Giỏ hàng"
             >
               <ShoppingCartIcon className="w-6 h-6" />
-              <span className="absolute -top-2 -right-2 bg-zinc-900 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-semibold">
-                0
-              </span>
-            </Link>
+              {cartCount > 0 && (
+                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full min-w-[20px] h-5 flex items-center justify-center font-semibold px-1.5 shadow-lg animate-pulse">
+                  {cartCount > 99 ? '99+' : cartCount}
+                </span>
+              )}
+            </button>
 
             {/* Mobile Menu Toggle */}
             <button

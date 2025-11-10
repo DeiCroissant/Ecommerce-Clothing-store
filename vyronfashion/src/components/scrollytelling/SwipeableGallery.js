@@ -1,61 +1,131 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { EffectCoverflow, Navigation, Pagination, Autoplay } from 'swiper/modules';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
+import * as productAPI from '@/lib/api/products';
 
 // Import Swiper styles (v12+ bundle)
 import 'swiper/swiper-bundle.css';
 
 /**
  * Swipeable Gallery with Coverflow Effect
- * Shows collection highlights with smooth transitions
+ * Shows products with most wishlist counts
  */
 export default function SwipeableGallery() {
-  const slides = [
-    {
-      id: 1,
-      image: '/images/products/tshirt-grey.jpg',
-      title: 'Summer T-Shirts',
-      description: 'Lightweight & Breathable',
-      link: '/category/t-shirts',
-      color: 'from-blue-500/20 to-purple-500/20'
-    },
-    {
-      id: 2,
-      image: '/images/products/jacket-denim.jpg',
-      title: 'Denim Jackets',
-      description: 'Classic Never Dies',
-      link: '/category/jackets',
-      color: 'from-indigo-500/20 to-blue-500/20'
-    },
-    {
-      id: 3,
-      image: '/images/products/polo-navy.jpg',
-      title: 'Polo Collection',
-      description: 'Elegant & Comfortable',
-      link: '/category/polos',
-      color: 'from-purple-500/20 to-pink-500/20'
-    },
-    {
-      id: 4,
-      image: '/images/products/hoodie-black.jpg',
-      title: 'Premium Hoodies',
-      description: 'Stay Cozy in Style',
-      link: '/category/hoodies',
-      color: 'from-orange-500/20 to-red-500/20'
-    },
-    {
-      id: 5,
-      image: '/images/products/jeans-blue.jpg',
-      title: 'Designer Jeans',
-      description: 'Perfect Fit Guaranteed',
-      link: '/category/jeans',
-      color: 'from-teal-500/20 to-green-500/20'
-    }
-  ];
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Load most wishlisted products from API
+  useEffect(() => {
+    const loadProducts = async () => {
+      try {
+        setLoading(true);
+        // Fetch products sorted by wishlist_count (most wishlisted first)
+        const response = await productAPI.getProducts({
+          status: 'active',
+          sort: 'most_wishlisted',
+          limit: 10, // Get top 10 most wishlisted products
+          page: 1
+        });
+        
+        if (response.products && response.products.length > 0) {
+          // Transform API products to slides format
+          const transformedProducts = response.products.map((product, index) => {
+            // Get product image - prioritize main image, then first color image, then gallery
+            let productImage = product.image || '';
+            if (!productImage && product.variants?.colors?.length > 0) {
+              const firstColor = product.variants.colors[0];
+              if (firstColor.images && firstColor.images.length > 0) {
+                productImage = firstColor.images[0];
+              }
+            }
+            if (!productImage && product.images && product.images.length > 0) {
+              productImage = product.images[0];
+            }
+            if (!productImage) {
+              productImage = '/images/placeholders/product-placeholder.svg';
+            }
+
+            // Color gradients for variety
+            const gradients = [
+              'from-blue-500/20 to-purple-500/20',
+              'from-indigo-500/20 to-blue-500/20',
+              'from-purple-500/20 to-pink-500/20',
+              'from-orange-500/20 to-red-500/20',
+              'from-teal-500/20 to-green-500/20',
+              'from-pink-500/20 to-rose-500/20',
+              'from-cyan-500/20 to-blue-500/20',
+              'from-emerald-500/20 to-teal-500/20',
+              'from-amber-500/20 to-orange-500/20',
+              'from-violet-500/20 to-purple-500/20'
+            ];
+
+            return {
+              id: product.id,
+              slug: product.slug,
+              image: productImage,
+              title: product.name,
+              description: product.short_description || `Được ${product.wishlist_count || 0} người yêu thích`,
+              link: `/products/${product.slug}`,
+              color: gradients[index % gradients.length],
+              wishlistCount: product.wishlist_count || 0
+            };
+          });
+          
+          setProducts(transformedProducts);
+        } else {
+          setProducts([]);
+        }
+      } catch (error) {
+        console.error('Error loading most wishlisted products:', error);
+        setProducts([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProducts();
+  }, []);
+
+  // Show loading state
+  if (loading) {
+    return (
+      <section className="relative py-24 bg-zinc-50 overflow-hidden">
+        <div className="text-center mb-16 px-4">
+          <div className="h-8 bg-gray-200 rounded w-64 mx-auto mb-4 animate-pulse" />
+          <div className="h-12 bg-gray-200 rounded w-96 mx-auto mb-4 animate-pulse" />
+          <div className="h-6 bg-gray-200 rounded w-2/3 mx-auto animate-pulse" />
+        </div>
+        <div className="flex justify-center items-center min-h-[400px]">
+          <div className="text-gray-500">Đang tải sản phẩm...</div>
+        </div>
+      </section>
+    );
+  }
+
+  // Show empty state
+  if (products.length === 0) {
+    return (
+      <section className="relative py-24 bg-zinc-50 overflow-hidden">
+        <div className="text-center mb-16 px-4">
+          <span className="inline-block px-4 py-2 bg-zinc-900 text-white text-sm font-medium rounded-full mb-4">
+            KHÁM PHÁ BỘ SƯU TẬP
+          </span>
+          <h2 className="text-4xl md:text-5xl font-bold text-zinc-900 mb-4">
+            Tuyển Chọn Đặc Biệt
+          </h2>
+          <p className="text-lg text-gray-500">
+            Chưa có sản phẩm nào được yêu thích
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="relative py-24 bg-zinc-50 overflow-hidden">
@@ -74,7 +144,7 @@ export default function SwipeableGallery() {
           Tuyển Chọn Đặc Biệt
         </h2>
         <p className="text-lg text-zinc-600 max-w-2xl mx-auto">
-          Lướt qua các sản phẩm nổi bật được chọn lọc kỹ càng cho bạn
+          Những sản phẩm được yêu thích nhất từ khách hàng
         </p>
       </motion.div>
 
@@ -113,30 +183,44 @@ export default function SwipeableGallery() {
           modules={[EffectCoverflow, Pagination, Navigation, Autoplay]}
           className="!pb-12"
         >
-          {slides.map((slide) => (
+          {products.map((product) => (
             <SwiperSlide 
-              key={slide.id}
+              key={product.id}
               className="!w-[300px] md:!w-[400px] !h-[400px] md:!h-[500px]"
             >
               <Link
-                href={slide.link}
+                href={product.link}
                 className="group block relative w-full h-full rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-500"
               >
                 {/* Image */}
                 <div className="absolute inset-0">
-                  <img
-                    src={slide.image}
-                    alt={slide.title}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                    onError={(e) => {
-                      if (e.target.src.includes('placeholder')) return;
-                      e.target.src = '/images/placeholders/product.jpg';
-                    }}
-                  />
+                  {product.image.startsWith('data:image/') || product.image.startsWith('http') || product.image.startsWith('/') ? (
+                    <Image
+                      src={product.image}
+                      alt={product.title}
+                      fill
+                      className="object-cover group-hover:scale-110 transition-transform duration-700"
+                      sizes="(max-width: 768px) 300px, 400px"
+                      onError={(e) => {
+                        if (e.target.src.includes('placeholder')) return;
+                        e.target.src = '/images/placeholders/product-placeholder.svg';
+                      }}
+                    />
+                  ) : (
+                    <img
+                      src={product.image}
+                      alt={product.title}
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                      onError={(e) => {
+                        if (e.target.src.includes('placeholder')) return;
+                        e.target.src = '/images/placeholders/product-placeholder.svg';
+                      }}
+                    />
+                  )}
                 </div>
 
                 {/* Gradient Overlay */}
-                <div className={`absolute inset-0 bg-gradient-to-t ${slide.color} opacity-60 group-hover:opacity-40 transition-opacity duration-500`} />
+                <div className={`absolute inset-0 bg-gradient-to-t ${product.color} opacity-60 group-hover:opacity-40 transition-opacity duration-500`} />
 
                 {/* Content */}
                 <div className="absolute inset-0 flex flex-col justify-end p-8 text-white">
@@ -146,7 +230,7 @@ export default function SwipeableGallery() {
                     whileInView={{ y: 0, opacity: 1 }}
                     transition={{ delay: 0.2 }}
                   >
-                    {slide.title}
+                    {product.title}
                   </motion.h3>
                   <motion.p
                     className="text-sm md:text-base text-white/90 mb-4"
@@ -154,8 +238,18 @@ export default function SwipeableGallery() {
                     whileInView={{ y: 0, opacity: 1 }}
                     transition={{ delay: 0.3 }}
                   >
-                    {slide.description}
+                    {product.description}
                   </motion.p>
+                  {product.wishlistCount > 0 && (
+                    <motion.div
+                      className="text-xs text-white/80 mb-2"
+                      initial={{ y: 20, opacity: 0 }}
+                      whileInView={{ y: 0, opacity: 1 }}
+                      transition={{ delay: 0.35 }}
+                    >
+                      ❤️ {product.wishlistCount} người yêu thích
+                    </motion.div>
+                  )}
                   <motion.div
                     className="inline-flex items-center gap-2 text-sm font-semibold group-hover:translate-x-2 transition-transform"
                     initial={{ y: 20, opacity: 0 }}

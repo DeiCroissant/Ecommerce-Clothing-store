@@ -7,44 +7,164 @@ import { UserWelcome } from '@/components/account/overview/UserWelcome'
 import { EmailVerificationBanner } from '@/components/account/overview/EmailVerificationBanner'
 import { QuickActionsGrid } from '@/components/account/overview/QuickActionsGrid'
 import { RecentOrdersWidget } from '@/components/account/overview/RecentOrdersWidget'
-import { mockOrders } from '@/lib/account/mockUserData'
+import * as orderAPI from '@/lib/api/orders'
+import * as returnsAPI from '@/lib/api/returns'
+import { formatDate, getStatusInfo } from '@/lib/mockOrdersData'
 
 export default function OverviewPage() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [recentOrders, setRecentOrders] = useState([])
   const router = useRouter()
 
+  const fetchUserData = async () => {
+    try {
+      // Lấy user từ localStorage
+      const userFromStorage = localStorage.getItem('user')
+      if (!userFromStorage) {
+        router.push('/')
+        return
+      }
+
+      const userData = JSON.parse(userFromStorage)
+      
+      // Fetch chi tiết user từ API
+      const response = await fetch(`http://localhost:8000/api/user/${userData.id}`)
+      
+      if (!response.ok) {
+        throw new Error('Không thể tải thông tin người dùng')
+      }
+
+      const userDetails = await response.json()
+      setUser(userDetails)
+      
+      // Update localStorage with full user data
+      localStorage.setItem('user', JSON.stringify(userDetails))
+    } catch (err) {
+      console.error('Error fetching user data:', err)
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fetchRecentOrders = async (userId) => {
+    try {
+      const [ordersResponse, returnsResponse] = await Promise.all([
+        orderAPI.getUserOrders(userId),
+        returnsAPI.getUserReturns(userId).catch(() => ({ returns: [] })) // Ignore errors for returns
+      ])
+      
+      const orders = ordersResponse.orders || []
+      const returnsData = returnsResponse.returns || []
+      
+      // Create a map of order_id to return status
+      const orderReturnsMap = {}
+      returnsData.forEach(ret => {
+        const orderId = ret.order_id
+        if (ret.status === 'completed') {
+          orderReturnsMap[orderId] = true
+        }
+      })
+      
+      // Transform orders to match component expectations
+      const transformedOrders = orders
+        .map(order => {
+          const orderId = order.id || order._id
+          const hasRefundCompleted = orderReturnsMap[orderId] || false
+          
+          return {
+            id: orderId,
+            orderNumber: order.order_number || order.orderNumber || order.id,
+            status: order.status || 'pending',
+            total: order.total_amount || order.total || 0,
+            date: order.created_at || order.date,
+            createdAt: order.created_at,
+            hasRefundCompleted,
+          }
+        })
+        .sort((a, b) => {
+          // Sort by date descending (newest first)
+          const dateA = new Date(a.date || a.createdAt)
+          const dateB = new Date(b.date || b.createdAt)
+          return dateB - dateA
+        })
+        .slice(0, 3) // Get 3 most recent
+      
+      setRecentOrders(transformedOrders)
+    } catch (error) {
+      console.error('Error fetching recent orders:', error)
+      setRecentOrders([])
+    }
+  }
+
   useEffect(() => {
-    const fetchUserData = async () => {
-      try {
-        // Lấy user từ localStorage
-        const userFromStorage = localStorage.getItem('user')
-        if (!userFromStorage) {
-          router.push('/')
-          return
+    const loadData = async () => {
+      await fetchUserData()
+      
+      // Fetch recent orders after user data is loaded
+      const userFromStorage = localStorage.getItem('user')
+      if (userFromStorage) {
+        try {
+          const userData = JSON.parse(userFromStorage)
+          const userId = userData.id || userData._id
+          if (userId) {
+            await fetchRecentOrders(userId)
+          }
+        } catch (error) {
+          console.error('Error loading user data:', error)
         }
-
-        const userData = JSON.parse(userFromStorage)
-        
-        // Fetch chi tiết user từ API
-        const response = await fetch(`http://localhost:8000/api/user/${userData.id}`)
-        
-        if (!response.ok) {
-          throw new Error('Không thể tải thông tin người dùng')
-        }
-
-        const userDetails = await response.json()
-        setUser(userDetails)
-      } catch (err) {
-        console.error('Error fetching user data:', err)
-        setError(err.message)
-      } finally {
-        setLoading(false)
       }
     }
-
-    fetchUserData()
+    
+    loadData()
+    
+    // Listen for user updates
+    const handleUserUpdate = () => {
+      loadData()
+    }
+    
+    // Listen for order and return updates
+    const handleOrdersChanged = () => {
+      const userFromStorage = localStorage.getItem('user')
+      if (userFromStorage) {
+        try {
+          const userData = JSON.parse(userFromStorage)
+          const userId = userData.id || userData._id
+          if (userId) {
+            fetchRecentOrders(userId)
+          }
+        } catch (error) {
+          console.error('Error loading user data:', error)
+        }
+      }
+    }
+    
+    const handleReturnsChanged = () => {
+      const userFromStorage = localStorage.getItem('user')
+      if (userFromStorage) {
+        try {
+          const userData = JSON.parse(userFromStorage)
+          const userId = userData.id || userData._id
+          if (userId) {
+            fetchRecentOrders(userId)
+          }
+        } catch (error) {
+          console.error('Error loading user data:', error)
+        }
+      }
+    }
+    
+    window.addEventListener('userUpdated', handleUserUpdate)
+    window.addEventListener('ordersChanged', handleOrdersChanged)
+    window.addEventListener('returnsChanged', handleReturnsChanged)
+    
+    return () => {
+      window.removeEventListener('userUpdated', handleUserUpdate)
+      window.removeEventListener('ordersChanged', handleOrdersChanged)
+      window.removeEventListener('returnsChanged', handleReturnsChanged)
+    }
   }, [router])
 
   if (loading) {
@@ -99,8 +219,6 @@ export default function OverviewPage() {
       </div>
     )
   }
-
-  const recentOrders = mockOrders.slice(0, 3)
 
   return (
     <div className="overview-page">

@@ -5,14 +5,17 @@ import { AddressCard } from './AddressCard'
 export function AddressList({ addresses, onEdit, onDelete }) {
   return (
     <div className="address-list">
-      {addresses.map((address) => (
+      {addresses.map((address) => {
+        const addressId = address.id || address._id
+        return (
         <AddressCard
-          key={address.id}
+            key={addressId}
           address={address}
           onEdit={() => onEdit(address)}
-          onDelete={() => onDelete(address.id)}
+            onDelete={() => onDelete(addressId)}
         />
-      ))}
+        )
+      })}
 
       <style jsx>{`
         .address-list {
