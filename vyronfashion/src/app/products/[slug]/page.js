@@ -101,8 +101,15 @@ export default function ProductDetailPage({ params }) {
       setLoading(true);
       setReviewsLoading(true);
       try {
+        // Decode URL-encoded slug (Next.js encodes special characters)
+        const decodedSlug = decodeURIComponent(slug);
+        console.log('🔍 Original slug:', slug);
+        console.log('🔍 Decoded slug:', decodedSlug);
+        
         // Tìm product theo slug
-        const foundProduct = await productAPI.getProductBySlug(slug);
+        const foundProduct = await productAPI.getProductBySlug(decodedSlug);
+        
+        console.log('📦 Product API response:', foundProduct);
         
         if (foundProduct) {
           // Ensure variants structure is correct
@@ -118,6 +125,8 @@ export default function ProductDetailPage({ params }) {
           
           // Debug: Log product data để kiểm tra
           console.log('✅ Product loaded:', foundProduct.name);
+          console.log('🔗 Product ID:', foundProduct.id);
+          console.log('🏷️ Product slug:', foundProduct.slug);
           console.log('📸 Product image:', foundProduct.image);
           console.log('📸 Product images array:', foundProduct.images);
           console.log('🎨 Variants colors:', foundProduct.variants.colors);
@@ -147,11 +156,11 @@ export default function ProductDetailPage({ params }) {
             setReviewsLoading(false);
           }
         } else {
-          console.log('Product not found for slug:', slug);
+          console.error('❌ Product not found for slug:', decodedSlug);
           setProduct(null);
         }
       } catch (error) {
-        console.error('Error loading product:', error);
+        console.error('❌ Error loading product:', error);
         setProduct(null);
       } finally {
         setLoading(false);
@@ -522,6 +531,49 @@ export default function ProductDetailPage({ params }) {
       console.error('Error submitting review:', error)
       throw error
     }
+  }
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+          <p className="text-gray-600">Đang tải sản phẩm...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Product not found
+  if (!product) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center max-w-md px-4">
+          <div className="text-6xl mb-4">😕</div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">
+            Không tìm thấy sản phẩm
+          </h1>
+          <p className="text-gray-600 mb-6">
+            Sản phẩm bạn đang tìm kiếm không tồn tại hoặc đã bị xóa.
+          </p>
+          <div className="space-x-4">
+            <button
+              onClick={() => router.back()}
+              className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-colors"
+            >
+              Quay lại
+            </button>
+            <button
+              onClick={() => router.push('/category/all')}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+            >
+              Xem tất cả sản phẩm
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

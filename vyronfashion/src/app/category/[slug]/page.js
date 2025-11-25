@@ -123,6 +123,16 @@ export default function CategoryPage({ params }) {
         queryParams.category_slug = slug;
       }
       
+      // Check if there are any active filters
+      const hasActiveFilters = (
+        (activeFilters.size && activeFilters.size.length > 0) ||
+        (activeFilters.color && activeFilters.color.length > 0) ||
+        (activeFilters.brand && activeFilters.brand.length > 0) ||
+        (activeFilters.material && activeFilters.material.length > 0) ||
+        (activeFilters.features && activeFilters.features.length > 0) ||
+        (activeFilters.priceRange && activeFilters.priceRange.min !== undefined && activeFilters.priceRange.max !== undefined)
+      );
+      
       // Add filters to backend query
       if (activeFilters.size && activeFilters.size.length > 0) {
         queryParams.sizes = activeFilters.size.join(',');
@@ -141,7 +151,9 @@ export default function CategoryPage({ params }) {
         queryParams.price_max = activeFilters.priceRange.max;
       }
       
+      console.log('Fetching products with params:', queryParams);
       const response = await productAPI.getProducts(queryParams);
+      console.log('API Response:', response);
 
       // Backend now handles all filters
       let filteredProducts = response.products || [];
@@ -179,6 +191,8 @@ export default function CategoryPage({ params }) {
         const endIndex = startIndex + 24;
         finalProducts = filteredProducts.slice(startIndex, endIndex);
       }
+      
+      console.log('Final products:', finalProducts.length, 'Total:', filteredTotal);
       
       setProducts(finalProducts);
       setTotalProducts(hasActiveFilters ? filteredTotal : response.total || 0);

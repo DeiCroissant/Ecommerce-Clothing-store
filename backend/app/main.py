@@ -87,6 +87,7 @@ import bcrypt
 from bson import ObjectId
 import secrets
 import os
+import re
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -1052,7 +1053,25 @@ async def get_products(
         query = {}
         
         if slug:
+            # Try exact match first, then case-insensitive regex match
+            print(f"🔍 Searching for product with slug: '{slug}'")
+            
+            # First try exact match
             query["slug"] = slug
+            count = await products_collection.count_documents(query)
+            
+            if count == 0:
+                # Try case-insensitive match
+                print(f"⚠️ No exact match, trying case-insensitive search...")
+                query["slug"] = {"$regex": f"^{slug}$", "$options": "i"}
+                count = await products_collection.count_documents(query)
+                
+                if count == 0:
+                    # Try without special characters normalization
+                    print(f"⚠️ No case-insensitive match, trying partial match...")
+                    query["slug"] = {"$regex": slug, "$options": "i"}
+                    count = await products_collection.count_documents(query)
+                    print(f"📊 Found {count} products with partial match")
         elif category_slug:
             query["category.slug"] = category_slug
         
