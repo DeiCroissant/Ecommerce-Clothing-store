@@ -110,20 +110,12 @@ export default function CategoryPage({ params }) {
       // Import product API
       const productAPI = await import('@/lib/api/products');
       
-      // Check if any filters are active
-      const hasActiveFilters = 
-        (activeFilters.category && activeFilters.category.length > 0) ||
-        (activeFilters.size && activeFilters.size.length > 0) ||
-        (activeFilters.color && activeFilters.color.length > 0) ||
-        (activeFilters.brand && activeFilters.brand.length > 0) ||
-        (activeFilters.material && activeFilters.material.length > 0) ||
-        (activeFilters.features && activeFilters.features.length > 0) ||
-        (activeFilters.priceRange && activeFilters.priceRange.min !== undefined && activeFilters.priceRange.max !== undefined);
-      
-      // Build query params - skip category_slug if slug is "all"
+      // Build query params with backend filters
       const queryParams = {
         status: 'active',
-        sort: currentSort
+        sort: currentSort,
+        limit: 24,
+        page: currentPage
       };
       
       // Only add category_slug if slug is not "all"
@@ -131,62 +123,30 @@ export default function CategoryPage({ params }) {
         queryParams.category_slug = slug;
       }
       
-      // If filters are active, fetch all products (large limit) for client-side filtering
-      // Otherwise, use pagination
-      if (hasActiveFilters) {
-        queryParams.limit = 1000; // Fetch a large number to ensure all products are available for filtering
-        queryParams.page = 1;
-      } else {
-        queryParams.limit = 24;
-        queryParams.page = currentPage;
+      // Add filters to backend query
+      if (activeFilters.size && activeFilters.size.length > 0) {
+        queryParams.sizes = activeFilters.size.join(',');
+      }
+      
+      if (activeFilters.color && activeFilters.color.length > 0) {
+        queryParams.colors = activeFilters.color.join(',');
+      }
+      
+      if (activeFilters.brand && activeFilters.brand.length > 0) {
+        queryParams.brands = activeFilters.brand.join(',');
+      }
+      
+      if (activeFilters.priceRange && activeFilters.priceRange.min !== undefined && activeFilters.priceRange.max !== undefined) {
+        queryParams.price_min = activeFilters.priceRange.min;
+        queryParams.price_max = activeFilters.priceRange.max;
       }
       
       const response = await productAPI.getProducts(queryParams);
 
-      // Client-side filtering (temporary until backend supports filter params)
+      // Backend now handles all filters
       let filteredProducts = response.products || [];
       
-      // Filter by category if selected
-      if (activeFilters.category && activeFilters.category.length > 0) {
-        filteredProducts = filteredProducts.filter(product => 
-          activeFilters.category.includes(product.category?.slug)
-        );
-      }
-      
-      // Filter by price range if selected
-      if (activeFilters.priceRange && activeFilters.priceRange.min !== undefined && activeFilters.priceRange.max !== undefined) {
-        filteredProducts = filteredProducts.filter(product => {
-          const price = product.pricing?.sale || 0;
-          return price >= activeFilters.priceRange.min && price <= activeFilters.priceRange.max;
-        });
-      }
-      
-      // Filter by size if selected (check if product has the size in variants)
-      if (activeFilters.size && activeFilters.size.length > 0) {
-        filteredProducts = filteredProducts.filter(product => {
-          if (!product.variants?.sizes) return false;
-          const productSizes = product.variants.sizes.map(s => s?.name || s);
-          return activeFilters.size.some(size => productSizes.includes(size));
-        });
-      }
-      
-      // Filter by color if selected
-      if (activeFilters.color && activeFilters.color.length > 0) {
-        filteredProducts = filteredProducts.filter(product => {
-          if (!product.variants?.colors) return false;
-          const productColors = product.variants.colors.map(c => c?.slug || c);
-          return activeFilters.color.some(color => productColors.includes(color));
-        });
-      }
-      
-      // Filter by brand if selected
-      if (activeFilters.brand && activeFilters.brand.length > 0) {
-        filteredProducts = filteredProducts.filter(product => 
-          activeFilters.brand.includes(product.brand?.slug)
-        );
-      }
-      
-      // Filter by material if selected
+      // Only client-side filter for material and features (not supported by backend yet)
       if (activeFilters.material && activeFilters.material.length > 0) {
         filteredProducts = filteredProducts.filter(product => 
           activeFilters.material.some(material => 
@@ -195,7 +155,6 @@ export default function CategoryPage({ params }) {
         );
       }
       
-      // Filter by features if selected
       if (activeFilters.features && activeFilters.features.length > 0) {
         filteredProducts = filteredProducts.filter(product => {
           if (activeFilters.features.includes('in_stock')) {

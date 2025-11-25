@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   StarIcon, 
@@ -27,8 +27,9 @@ import * as cartAPI from '@/lib/api/cart';
  * - Lazy loading images with fixed aspect ratio (3:4)
  * - Hover: Available colors + Quick View
  * - Wishlist toggle
+ * - Optimized with React.memo
  */
-export default function EnhancedProductCard({ product }) {
+const EnhancedProductCard = memo(function EnhancedProductCard({ product }) {
   const [selectedSize, setSelectedSize] = useState(null);
   const [selectedColor, setSelectedColor] = useState(null);
   const [hoveredColor, setHoveredColor] = useState(null);
@@ -540,4 +541,6 @@ export default function EnhancedProductCard({ product }) {
       </AnimatePresence>
     </motion.div>
   );
-}
+});
+
+export default EnhancedProductCard;

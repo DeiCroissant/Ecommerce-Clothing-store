@@ -1026,15 +1026,24 @@ async def get_products(
     category_slug: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     slug: Optional[str] = Query(None),
+    sizes: Optional[str] = Query(None),  # Comma-separated sizes
+    colors: Optional[str] = Query(None),  # Comma-separated color slugs
+    brands: Optional[str] = Query(None),  # Comma-separated brand slugs
+    price_min: Optional[int] = Query(None),
+    price_max: Optional[int] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(24, ge=1, le=100),
     sort: Optional[str] = Query('newest')
 ):
     """
-    Lấy danh sách sản phẩm
+    Lấy danh sách sản phẩm với filter hỗ trợ
     - category_slug: Lọc theo category slug
     - status: Lọc theo trạng thái (active/inactive)
-    - slug: Tìm sản phẩm theo slug (trả về 1 sản phẩm nếu tìm thấy)
+    - slug: Tìm sản phẩm theo slug
+    - sizes: Filter theo sizes (S,M,L,XL)
+    - colors: Filter theo màu sắc (slugs)
+    - brands: Filter theo brands (slugs)
+    - price_min, price_max: Filter theo giá
     - page: Trang hiện tại
     - limit: Số lượng mỗi trang
     - sort: Sắp xếp (newest, price_asc, price_desc)
@@ -1043,13 +1052,36 @@ async def get_products(
         query = {}
         
         if slug:
-            # Tìm theo slug - trả về 1 sản phẩm
             query["slug"] = slug
         elif category_slug:
             query["category.slug"] = category_slug
         
         if status:
             query["status"] = status
+        
+        # Filter by sizes
+        if sizes:
+            size_list = [s.strip() for s in sizes.split(',')]
+            query["variants.sizes.name"] = {"$in": size_list}
+        
+        # Filter by colors
+        if colors:
+            color_list = [c.strip() for c in colors.split(',')]
+            query["variants.colors.slug"] = {"$in": color_list}
+        
+        # Filter by brands
+        if brands:
+            brand_list = [b.strip() for b in brands.split(',')]
+            query["brand.slug"] = {"$in": brand_list}
+        
+        # Filter by price range
+        if price_min is not None or price_max is not None:
+            price_query = {}
+            if price_min is not None:
+                price_query["$gte"] = price_min
+            if price_max is not None:
+                price_query["$lte"] = price_max
+            query["pricing.sale"] = price_query
         
         print(f"🔍 Query products with: {query}")
         
