@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status, Path, Response, Query, Body
+from fastapi import FastAPI, HTTPException, status, Path, Response, Query, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 from app.database import users_collection, categories_collection, products_collection, reviews_collection, orders_collection, cart_collection, addresses_collection, coupons_collection, returns_collection, settings_collection, close_db
@@ -91,6 +91,10 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# VietQR + Casso payment integration
+import app.payment_vietqr as payment_integration
+import app.schemas as schemas
 
 app = FastAPI(
     title="Vyron Fashion API",
@@ -1794,6 +1798,190 @@ async def create_order(order_data: OrderCreate):
             detail=f"Lỗi server: {str(e)}"
         )
 
+
+# ==================== VIETQR + CASSO PAYMENT ENDPOINTS ====================
+@app.post("/api/payments/vietqr/initiate", response_model=schemas.VietQRInitiateResponse)
+async def vietqr_initiate(payload: schemas.VietQRInitiateRequest):
+    """Tạo QR code VietQR cho thanh toán."""
+    # Kiểm tra order tồn tại
+    order = await orders_collection.find_one({"_id": ObjectId(payload.order_id)})
+    if not order:
+        raise HTTPException(status_code=404, detail="Không tìm thấy order")
+
+    # Tạo QR code
+    result = await payment_integration.create_vietqr_payment(
+        order_id=payload.order_id,
+        amount=payload.amount,
+        description=payload.description or f"Thanh toan don {payload.order_id[-8:]}"
+    )
+
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("message"))
+
+    # Lưu thông tin payment
+    payment_record = {
+        "provider": "vietqr",
+        "status": "pending",
+        "amount": payload.amount,
+        "payment_info": result.get("payment_info"),
+        "qr_url": result.get("vietqr_url"),
+        "created_at": datetime.now().isoformat(),
+    }
+
+    await orders_collection.update_one(
+        {"_id": ObjectId(payload.order_id)},
+        {"$set": {"payment": payment_record}}
+    )
+
+    return schemas.VietQRInitiateResponse(
+        success=True,
+        order_id=payload.order_id,
+        qr_code=result.get("qr_code"),
+        qr_data_url=result.get("qr_data_url"),
+        vietqr_url=result.get("vietqr_url"),
+        payment_info=result.get("payment_info"),
+        message="QR code đã được tạo"
+    )
+
+
+@app.post("/api/payments/casso/webhook")
+async def casso_webhook(request: Request):
+    """Nhận webhook từ Casso khi có giao dịch mới."""
+    print("\n" + "="*60)
+    print("🔔 WEBHOOK RECEIVED FROM CASSO")
+    print("="*60)
+    
+    # Đọc raw body
+    body = await request.body()
+    body_str = body.decode()
+    
+    print(f"📦 Raw body: {body_str[:200]}...")
+    print(f"🔑 Headers: {dict(request.headers)}")
+    
+    # Parse JSON
+    try:
+        import json
+        webhook_data = json.loads(body_str)
+        print(f"✅ JSON parsed successfully")
+        print(f"📊 Webhook data: {webhook_data}")
+    except Exception as e:
+        print(f"❌ JSON parse error: {e}")
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    
+    # Xác thực webhook signature
+    signature = request.headers.get("X-Signature", "")
+    print(f"🔐 Signature check: {'Present' if signature else 'Missing'}")
+    
+    if not payment_integration.verify_casso_webhook(body_str, signature):
+        print(f"❌ Invalid signature!")
+        raise HTTPException(status_code=401, detail="Invalid signature")
+    
+    print(f"✅ Signature valid")
+
+    # Casso gửi data trong format: {"error": 0, "data": [transaction1, transaction2, ...]}
+    transactions = webhook_data.get("data", [])
+    if not transactions:
+        print(f"⚠️  No transactions in webhook")
+        return {"success": False, "message": "Không có giao dịch nào trong webhook"}
+    
+    print(f"💰 Processing {len(transactions)} transaction(s)")
+    
+    # Xử lý từng transaction (thường chỉ có 1)
+    results = []
+    for idx, transaction in enumerate(transactions):
+        print(f"\n--- Transaction #{idx + 1} ---")
+        description = transaction.get("description", "")
+        amount = transaction.get("amount", 0)
+        tid = transaction.get("tid", "")
+        when = transaction.get("when", "")
+        casso_id = transaction.get("id", 0)
+        
+        print(f"💵 Amount: {amount:,}đ")
+        print(f"📝 Description: {description}")
+        print(f"🔖 Transaction ID: {tid}")
+        
+        # Tìm order_id trong description
+        order_id = None
+        import re
+        match = re.search(r'[a-f0-9]{24}', description.lower())
+        if match:
+            order_id = match.group(0)
+            print(f"🎯 Found Order ID: {order_id}")
+        
+        if not order_id:
+            msg = f"Không tìm thấy order_id trong: {description}"
+            print(f"❌ {msg}")
+            results.append({"success": False, "message": msg})
+            continue
+
+        # Kiểm tra order tồn tại
+        order = await orders_collection.find_one({"_id": ObjectId(order_id)})
+        if not order:
+            msg = f"Order {order_id} không tồn tại"
+            print(f"❌ {msg}")
+            results.append({"success": False, "message": msg})
+            continue
+
+        # Kiểm tra số tiền khớp
+        expected_amount = order.get("total_amount", 0)
+        print(f"💵 Expected: {expected_amount:,}đ | Received: {amount:,}đ")
+        
+        if abs(amount - expected_amount) > 1:  # Cho phép sai lệch 1đ
+            msg = f"Số tiền không khớp: nhận {amount}, mong đợi {expected_amount}"
+            print(f"❌ {msg}")
+            results.append({
+                "success": False, 
+                "message": msg
+            })
+            continue
+
+        # Cập nhật payment status
+        print(f"🔄 Updating order {order_id}...")
+        await orders_collection.update_one(
+            {"_id": ObjectId(order_id)},
+            {"$set": {
+                "payment.status": "completed",
+                "payment.transaction_id": tid,
+                "payment.casso_id": casso_id,
+                "payment.completed_at": when,
+                "payment.raw_webhook": transaction,
+                "status": "processing",
+                "updated_at": datetime.now().isoformat()
+            }}
+        )
+        
+        msg = f"Đã cập nhật thanh toán cho order {order_id}"
+        print(f"✅ {msg}")
+        results.append({
+            "success": True, 
+            "message": msg,
+            "order_id": order_id
+        })
+
+    print("\n" + "="*60)
+    print(f"✅ WEBHOOK PROCESSED: {len(results)} result(s)")
+    print("="*60 + "\n")
+    
+    return {"success": True, "processed": len(results), "results": results}
+
+
+@app.get("/api/payments/status/{order_id}", response_model=schemas.PaymentStatusResponse)
+async def get_payment_status(order_id: str = Path(...)):
+    """Lấy trạng thái thanh toán của order."""
+    order = await orders_collection.find_one({"_id": ObjectId(order_id)})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    payment = order.get("payment", {})
+    
+    return schemas.PaymentStatusResponse(
+        success=True,
+        order_id=order_id,
+        payment=payment,
+        paid=payment.get("status") == "completed"
+    )
+
+
 @app.get("/api/orders/user/{user_id}", response_model=OrderListResponse)
 async def get_user_orders(user_id: str = Path(...)):
     """Lấy danh sách đơn hàng của user"""
@@ -2294,6 +2482,29 @@ async def remove_cart_item(user_id: str = Path(...), item_index: int = Path(...)
         return {"success": True, "message": "Đã xóa khỏi giỏ hàng"}
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+
+@app.delete("/api/cart/{user_id}/clear")
+async def clear_cart(user_id: str = Path(...)):
+    """Xóa toàn bộ giỏ hàng của user"""
+    try:
+        cart = await cart_collection.find_one({"user_id": user_id})
+        if not cart:
+            # Không có giỏ hàng cũng coi là success
+            return {"success": True, "message": "Giỏ hàng đã trống"}
+        
+        # Xóa toàn bộ items
+        await cart_collection.update_one(
+            {"user_id": user_id},
+            {"$set": {"items": [], "updated_at": datetime.now().isoformat()}}
+        )
+        
+        return {"success": True, "message": "Đã xóa toàn bộ giỏ hàng"}
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

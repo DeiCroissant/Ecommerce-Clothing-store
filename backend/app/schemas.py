@@ -623,3 +623,36 @@ class PaymentSettingsResponse(BaseModel):
     payment_methods: list[PaymentMethodSetting]
     shipping_methods: list[ShippingMethodSetting]
 
+
+# ==================== VIETQR + CASSO PAYMENT SCHEMAS ====================
+class VietQRInitiateRequest(BaseModel):
+    order_id: str = Field(..., description="Order ID liên kết với yêu cầu thanh toán")
+    amount: float = Field(..., gt=0, description="Số tiền (VND)")
+    description: Optional[str] = Field('', description="Nội dung chuyển khoản")
+
+class VietQRInitiateResponse(BaseModel):
+    success: bool
+    message: Optional[str] = None
+    qr_code: Optional[str] = None  # Base64 QR image
+    qr_data_url: Optional[str] = None  # Data URL for img src
+    payment_info: Optional[dict] = None
+    order_id: str
+
+class CassoWebhookPayload(BaseModel):
+    id: Optional[int] = Field(None, description="Transaction ID từ Casso")
+    tid: Optional[str] = Field(None, description="Bank transaction ID")
+    description: Optional[str] = Field(None, description="Nội dung chuyển khoản")
+    amount: Optional[float] = Field(None, description="Số tiền")
+    when: Optional[str] = Field(None, description="Thời gian giao dịch")
+    bank_sub_acc_id: Optional[str] = Field(None, description="Sub account ID")
+    subAccId: Optional[str] = None
+    
+    class Config:
+        extra = "allow"  # Cho phép thêm fields không khai báo
+
+class PaymentStatusResponse(BaseModel):
+    success: bool
+    order_id: str
+    payment: Optional[dict] = None
+    paid: bool = False
+

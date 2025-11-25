@@ -71,6 +71,20 @@ export default function CartPage() {
     return null;
   };
 
+  // Load saved coupon from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedCoupon = localStorage.getItem('appliedCoupon');
+      if (savedCoupon) {
+        try {
+          setAppliedPromo(JSON.parse(savedCoupon));
+        } catch (e) {
+          console.error('Error loading saved coupon:', e);
+        }
+      }
+    }
+  }, []);
+
   // Load cart from API
   useEffect(() => {
     const loadCart = async () => {
@@ -524,6 +538,11 @@ export default function CartPage() {
       
       setAppliedPromo(promo);
       setPromoCode('');
+      
+      // Lưu coupon vào localStorage để checkout có thể sử dụng
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('appliedCoupon', JSON.stringify(promo));
+      }
     } catch (error) {
       console.error('Error validating coupon:', error);
       setPromoError('Có lỗi xảy ra khi kiểm tra mã giảm giá');
@@ -533,6 +552,11 @@ export default function CartPage() {
   const handleRemovePromo = () => {
     setAppliedPromo(null);
     setPromoError('');
+    
+    // Xóa coupon khỏi localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('appliedCoupon');
+    }
   };
 
   // Handle save for later

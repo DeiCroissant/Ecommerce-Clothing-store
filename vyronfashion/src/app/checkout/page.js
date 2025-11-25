@@ -42,6 +42,7 @@ export default function CheckoutPage() {
   const [note, setNote] = useState('');
   const [errors, setErrors] = useState({});
   const [user, setUser] = useState(null);
+  const [appliedCoupon, setAppliedCoupon] = useState(null); // Thêm state cho coupon
 
   // Load payment options
   useEffect(() => {
@@ -150,6 +151,20 @@ export default function CheckoutPage() {
     loadCart();
   }, [router]);
 
+  // Load applied coupon from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedCoupon = localStorage.getItem('appliedCoupon');
+      if (savedCoupon) {
+        try {
+          setAppliedCoupon(JSON.parse(savedCoupon));
+        } catch (e) {
+          console.error('Error loading saved coupon:', e);
+        }
+      }
+    }
+  }, []);
+
   // Load addresses
   useEffect(() => {
     const loadAddresses = async () => {
@@ -178,9 +193,26 @@ export default function CheckoutPage() {
 
   // Calculate totals
   const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  
+  // Calculate discount from coupon
+  let discount = 0;
+  if (appliedCoupon) {
+    if (appliedCoupon.discount_amount !== undefined) {
+      discount = appliedCoupon.discount_amount;
+    } else if (appliedCoupon.type === 'percentage') {
+      discount = Math.round(subtotal * appliedCoupon.discount / 100);
+      if (appliedCoupon.maxDiscount && discount > appliedCoupon.maxDiscount) {
+        discount = appliedCoupon.maxDiscount;
+      }
+    } else if (appliedCoupon.type === 'fixed') {
+      discount = appliedCoupon.discount;
+    }
+  }
+  
+  const subtotalAfterDiscount = subtotal - discount;
   const finalShippingFee = selectedShipping ? selectedShipping.price : 0;
-  const tax = Math.round(subtotal * 0.1); // 10% VAT
-  const finalTotal = subtotal + finalShippingFee + tax;
+  const tax = Math.round(subtotalAfterDiscount * 0.1); // 10% VAT tính trên giá sau giảm
+  const finalTotal = subtotalAfterDiscount + finalShippingFee + tax;
 
 
 
@@ -246,36 +278,54 @@ export default function CheckoutPage() {
         total_amount: finalTotal,
         shipping_address: shippingAddress,
         payment_method: paymentMethod,
-        status: paymentMethod === 'cod' ? 'pending' : 'paid',
+        status: 'pending', // Luôn là pending, sẽ cập nhật thành processing khi webhook xác nhận thanh toán
         note: note.trim() || ''
       };
 
       const order = await orderAPI.createOrder(orderData);
 
-      // Clear cart after successful order
+      // Clear cart after successful order - Use new clear endpoint
       try {
-        // Delete all cart items
-        for (let i = cartItems.length - 1; i >= 0; i--) {
-          await cartAPI.removeCartItem(userId, i);
-        }
+        const clearResponse = await fetch(`${API_BASE_URL}/api/cart/${userId}/clear`, {
+          method: 'DELETE'
+        });
         
-        // Dispatch cart changed event
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new Event('cartChanged'));
+        if (clearResponse.ok) {
+          const result = await clearResponse.json();
+          console.log('Cart cleared:', result);
+          
+          // Dispatch cart changed event
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('cartChanged'));
+          }
+          
+          // Force reload cart state
+          setCartItems([]);
+          
+          // Clear saved coupon
+          localStorage.removeItem('appliedCoupon');
+        } else {
+          console.error('Failed to clear cart:', clearResponse.status);
         }
       } catch (cartError) {
+        // Don't block checkout flow if cart clearing fails
         console.error('Error clearing cart:', cartError);
       }
 
-      // Show success message
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('showToast', { 
-          detail: { message: 'Đặt hàng thành công!', type: 'success', duration: 3000 } 
-        }));
+      // Redirect based on payment method
+      if (paymentMethod === 'bank_transfer') {
+        // Redirect to QR payment page - không hiển thị toast success ở đây
+        router.push(`/payment/${order.id}`);
+      } else {
+        // Show success message for COD only
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('showToast', { 
+            detail: { message: 'Đặt hàng thành công!', type: 'success', duration: 3000 } 
+          }));
+        }
+        // Redirect to order confirmation page for COD
+        router.push(`/checkout/success?orderId=${order.id}&orderNumber=${order.order_number}`);
       }
-
-      // Redirect to order confirmation page
-      router.push(`/checkout/success?orderId=${order.id}&orderNumber=${order.order_number}`);
     } catch (error) {
       console.error('Error creating order:', error);
       if (typeof window !== 'undefined') {
@@ -514,6 +564,12 @@ export default function CheckoutPage() {
                   <span>Tạm tính:</span>
                   <span>{subtotal.toLocaleString('vi-VN')}₫</span>
                 </div>
+                {appliedCoupon && discount > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span>Giảm giá ({appliedCoupon.code}):</span>
+                    <span>-{discount.toLocaleString('vi-VN')}₫</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-gray-600">
                   <span>Phí vận chuyển:</span>
                   <span>{finalShippingFee.toLocaleString('vi-VN')}₫</span>
