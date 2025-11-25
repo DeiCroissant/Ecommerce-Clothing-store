@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, use } from 'react';
+import { useRouter } from 'next/navigation';
 import ProductGallery from '@/components/product/ProductGallery';
 import ProductInfo from '@/components/product/ProductInfo';
 import VariantSelector from '@/components/product/VariantSelector';
@@ -20,6 +21,7 @@ import ProductReviews from '@/components/product/ProductReviews';
 export default function ProductDetailPage({ params }) {
   const resolvedParams = use(params);
   const { slug } = resolvedParams;
+  const router = useRouter();
   
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -257,18 +259,6 @@ export default function ProductDetailPage({ params }) {
       // ProductGallery will automatically update when productImages changes
     }
   };
-  
-  // Handle image click - switch to color if image belongs to a color
-  const handleImageClick = (colorSlug) => {
-    console.log('handleImageClick called with colorSlug:', colorSlug, 'current color:', selectedVariant.color);
-    if (colorSlug && colorSlug !== selectedVariant.color) {
-      console.log('Changing color to:', colorSlug);
-      setSelectedVariant(prev => ({
-        ...prev,
-        color: colorSlug
-      }));
-    }
-  };
 
   const handleAddToCart = async (quantity) => {
     if (!selectedVariant.color || !selectedVariant.size) {
@@ -354,7 +344,7 @@ export default function ProductDetailPage({ params }) {
     setConfettiActive(false);
   };
 
-  const handleBuyNow = (quantity) => {
+  const handleBuyNow = async (quantity) => {
     if (!selectedVariant.color || !selectedVariant.size) {
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('showToast', { 
@@ -364,18 +354,87 @@ export default function ProductDetailPage({ params }) {
       return;
     }
 
-    console.log('Buy now:', {
-      product: product?.name,
-      variant: selectedVariant,
-      quantity
-    });
+    const userId = getCurrentUserId();
+    if (!userId) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Vui lòng đăng nhập để mua hàng', type: 'warning', duration: 3000 } 
+        }));
+      }
+      return;
+    }
 
-    // Redirect to checkout
-    // router.push('/checkout');
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('showToast', { 
-        detail: { message: 'Chuyển đến trang thanh toán...', type: 'info', duration: 2000 } 
-      }));
+    try {
+      // Get button position for animations
+      if (addToCartButtonRef.current) {
+        const buttonRect = addToCartButtonRef.current.getBoundingClientRect();
+        const startX = buttonRect.left + buttonRect.width / 2;
+        const startY = buttonRect.top + buttonRect.height / 2;
+        
+        setFlyToCartPosition({ x: startX, y: startY });
+        setConfettiOrigin({ x: startX, y: startY });
+      }
+
+      // Thêm sản phẩm vào giỏ hàng như bình thường
+      await cartAPI.addToCart(
+        userId,
+        product.id,
+        selectedVariant.color,
+        selectedVariant.size,
+        quantity
+      );
+
+      // Reload cart
+      const cartData = await cartAPI.getCart(userId);
+      setCartItems(cartData.items || []);
+
+      // Dispatch event to update cart count in header
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('cartChanged'));
+      }
+
+      // Trigger animations
+      setFlyToCartActive(true);
+      setConfettiActive(true);
+
+      // Lấy item vừa thêm vào giỏ hàng để lưu vào localStorage
+      // Tìm item khớp với product_id, color, size vừa thêm
+      const addedItem = (cartData.items || []).find(item => 
+        item.product_id === product.id &&
+        item.variant_color === selectedVariant.color &&
+        item.variant_size === selectedVariant.size
+      );
+
+      if (addedItem) {
+        // Lưu thông tin sản phẩm mua ngay vào localStorage
+        const buyNowItem = {
+          product_id: addedItem.product_id,
+          product_name: addedItem.product_name,
+          product_image: addedItem.product_image,
+          variant_color: addedItem.variant_color,
+          variant_size: addedItem.variant_size,
+          quantity: quantity,
+          price: addedItem.price
+        };
+
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('buyNowItem', JSON.stringify(buyNowItem));
+          
+          // Wait a bit for animation then redirect to checkout
+          setTimeout(() => {
+            router.push('/checkout?buyNow=true');
+          }, 800);
+        }
+      } else {
+        throw new Error('Không tìm thấy sản phẩm trong giỏ hàng');
+      }
+    } catch (error) {
+      console.error('Error during buy now:', error);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { message: 'Có lỗi xảy ra, vui lòng thử lại', type: 'error', duration: 3000 } 
+        }));
+      }
     }
   };
 
@@ -475,7 +534,6 @@ export default function ProductDetailPage({ params }) {
             <ProductGallery 
               images={productImages} 
               productName={product.name}
-              onImageClick={handleImageClick}
             />
           </div>
 

@@ -666,20 +666,54 @@ async def reset_password(request: ResetPasswordRequest):
                 detail="Token không hợp lệ hoặc đã hết hạn"
             )
         
+        # Validate password: độ dài, chữ hoa, ký tự đặc biệt
+        if len(request.new_password) < 8:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mật khẩu phải có ít nhất 8 ký tự"
+            )
+        
+        if not re.search(r'[A-Z]', request.new_password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mật khẩu phải có ít nhất 1 chữ hoa"
+            )
+        
+        if not re.search(r'[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]', request.new_password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mật khẩu phải có ít nhất 1 ký tự đặc biệt"
+            )
+        
         # Validate password không chứa username, tên, ngày sinh
         pw_lower = request.new_password.lower()
+        pw_no_accent = remove_accents(request.new_password).lower()
+        
+        # Get user info
         name_key = remove_accents(user.get("name", "")).replace(" ", "").lower()
-        username_key = remove_accents(user.get("username", "")).replace(" ", "").lower()
+        username_key = remove_accents(user.get("username", "")).lower()
         dob_str = user.get("dateOfBirth", "").replace("-", "").replace("/", "")
         
-        if username_key and (pw_lower == username_key or username_key in pw_lower):
-            raise HTTPException(status_code=400, detail="Mật khẩu không được trùng hoặc chứa tên đăng nhập")
+        # Check username (không được trùng hoàn toàn hoặc chứa username)
+        if username_key and len(username_key) >= 3:
+            if pw_lower == username_key or username_key in pw_no_accent:
+                raise HTTPException(status_code=400, detail="Mật khẩu không được trùng hoặc chứa tên đăng nhập")
         
-        if name_key and (pw_lower == name_key or name_key in pw_lower):
-            raise HTTPException(status_code=400, detail="Mật khẩu không được trùng hoặc chứa tên cá nhân")
+        # Check tên (không được trùng hoàn toàn hoặc chứa tên đầy đủ)
+        if name_key and len(name_key) >= 3:
+            if pw_no_accent == name_key or name_key in pw_no_accent:
+                raise HTTPException(status_code=400, detail="Mật khẩu không được trùng hoặc chứa tên cá nhân")
         
-        if dob_str and dob_str in pw_lower:
-            raise HTTPException(status_code=400, detail="Mật khẩu không được chứa ngày sinh")
+        # Check ngày sinh (không được chứa ngày sinh dạng YYYYMMDD, DDMMYYYY)
+        if dob_str and len(dob_str) >= 6:
+            # Check YYYYMMDD format
+            if dob_str in pw_lower:
+                raise HTTPException(status_code=400, detail="Mật khẩu không được chứa ngày sinh")
+            # Check DDMMYYYY format
+            if len(dob_str) == 8:
+                reversed_dob = dob_str[4:8] + dob_str[2:4] + dob_str[0:2]  # YYYY-MM-DD -> DDMMYYYY
+                if reversed_dob in pw_lower:
+                    raise HTTPException(status_code=400, detail="Mật khẩu không được chứa ngày sinh")
         
         # Hash password mới
         hashed_password = bcrypt.hashpw(
@@ -2490,9 +2524,16 @@ async def remove_cart_item(user_id: str = Path(...), item_index: int = Path(...)
 
 
 @app.delete("/api/cart/{user_id}/clear")
-async def clear_cart(user_id: str = Path(...)):
+async def clear_cart(user_id: str = Path(..., description="User ID")):
     """Xóa toàn bộ giỏ hàng của user"""
     try:
+        # Validate user_id
+        if not user_id or user_id == "null" or user_id == "undefined":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User ID không hợp lệ"
+            )
+        
         cart = await cart_collection.find_one({"user_id": user_id})
         if not cart:
             # Không có giỏ hàng cũng coi là success
@@ -2505,6 +2546,8 @@ async def clear_cart(user_id: str = Path(...)):
         )
         
         return {"success": True, "message": "Đã xóa toàn bộ giỏ hàng"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

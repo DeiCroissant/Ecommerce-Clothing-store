@@ -122,6 +122,23 @@ export default function CheckoutPage() {
 
       try {
         setLoading(true);
+        
+        // Check if this is a "Buy Now" checkout
+        const urlParams = new URLSearchParams(window.location.search);
+        const isBuyNow = urlParams.get('buyNow') === 'true';
+        
+        if (isBuyNow && typeof window !== 'undefined') {
+          // Load buy now item from localStorage
+          const buyNowItemStr = localStorage.getItem('buyNowItem');
+          if (buyNowItemStr) {
+            const buyNowItem = JSON.parse(buyNowItemStr);
+            setCartItems([buyNowItem]);
+            setLoading(false);
+            return;
+          }
+        }
+        
+        // Normal cart checkout
         const cartData = await cartAPI.getCart(userId);
         const items = cartData.items || [];
         
@@ -284,28 +301,71 @@ export default function CheckoutPage() {
 
       const order = await orderAPI.createOrder(orderData);
 
-      // Clear cart after successful order - Use new clear endpoint
+      // Check if this is a Buy Now checkout
+      const urlParams = new URLSearchParams(window.location.search);
+      const isBuyNow = urlParams.get('buyNow') === 'true';
+
+      // Clear cart or remove specific item based on checkout type
       try {
-        const clearResponse = await fetch(`${API_BASE_URL}/api/cart/${userId}/clear`, {
-          method: 'DELETE'
-        });
-        
-        if (clearResponse.ok) {
-          const result = await clearResponse.json();
-          console.log('Cart cleared:', result);
-          
-          // Dispatch cart changed event
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new Event('cartChanged'));
-          }
-          
-          // Force reload cart state
-          setCartItems([]);
-          
-          // Clear saved coupon
-          localStorage.removeItem('appliedCoupon');
+        if (!userId) {
+          console.warn('Cannot clear cart: userId is null');
         } else {
-          console.error('Failed to clear cart:', clearResponse.status);
+          if (isBuyNow) {
+            // For Buy Now: Only remove the specific item from cart
+            const buyNowItemStr = localStorage.getItem('buyNowItem');
+            if (buyNowItemStr) {
+              const buyNowItem = JSON.parse(buyNowItemStr);
+              
+              // Remove this specific item from cart
+              const removeResponse = await fetch(`${API_BASE_URL}/api/cart/${userId}/item`, {
+                method: 'DELETE',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  product_id: buyNowItem.product_id,
+                  variant_color: buyNowItem.variant_color,
+                  variant_size: buyNowItem.variant_size
+                })
+              });
+              
+              if (removeResponse.ok) {
+                console.log('Buy Now item removed from cart');
+                
+                // Dispatch cart changed event
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new Event('cartChanged'));
+                }
+                
+                // Clear buyNowItem from localStorage
+                localStorage.removeItem('buyNowItem');
+              }
+            }
+          } else {
+            // Normal checkout: Clear entire cart
+            const clearResponse = await fetch(`${API_BASE_URL}/api/cart/${userId}/clear`, {
+              method: 'DELETE'
+            });
+            
+            if (clearResponse.ok) {
+              const result = await clearResponse.json();
+              console.log('Cart cleared:', result);
+              
+              // Dispatch cart changed event
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('cartChanged'));
+              }
+              
+              // Force reload cart state
+              setCartItems([]);
+              
+              // Clear saved coupon
+              localStorage.removeItem('appliedCoupon');
+            } else {
+              const errorData = await clearResponse.text();
+              console.error('Failed to clear cart:', clearResponse.status, errorData);
+            }
+          }
         }
       } catch (cartError) {
         // Don't block checkout flow if cart clearing fails
