@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { 
-  Menu, 
   Search, 
   Bell, 
   User as UserIcon,
@@ -24,7 +23,7 @@ import { formatCurrency } from '@/lib/formatCurrency'
  * - User menu
  */
 
-export function AdminHeader({ onMenuToggle }) {
+export function AdminHeader() {
   const [user, setUser] = useState(null)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
@@ -123,15 +122,6 @@ export function AdminHeader({ onMenuToggle }) {
     <header className="admin-header">
       {/* Left Section */}
       <div className="header-left">
-        {/* Mobile Menu Toggle */}
-        <button
-          className="header-menu-toggle"
-          onClick={onMenuToggle}
-          aria-label="Toggle menu"
-        >
-          <Menu size={20} />
-        </button>
-
         {/* Command Palette / Search */}
         <div className="header-search-wrapper">
           <Search className="header-search-icon" size={18} />

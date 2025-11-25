@@ -35,7 +35,7 @@ export default function ProductGallery({ images, productName, onImageClick }) {
     }
   }, [images]);
   
-  // Handle image click - if image belongs to a color, switch to that color
+  // Handle image click - just change selected image, don't auto-switch color
   const handleImageClick = (index) => {
     // Validate index
     if (index < 0 || index >= normalizedImages.length) {
@@ -43,27 +43,8 @@ export default function ProductGallery({ images, productName, onImageClick }) {
       return;
     }
     
-    console.log('Image clicked:', index, 'Total images:', normalizedImages.length);
-    console.log('Image data:', normalizedImages[index]);
-    
-    // Use functional update to ensure we get the latest state
-    setSelectedImage(prev => {
-      console.log('Setting selectedImage from', prev, 'to', index);
-      return index;
-    });
-    
-    // Get image data
-    const image = normalizedImages[index];
-    
-    // If image belongs to a color and onImageClick callback is provided, trigger it
-    // Use setTimeout to ensure state update happens first
-    if (image && image.colorSlug && onImageClick) {
-      console.log('Switching to color:', image.colorSlug);
-      // Small delay to ensure state update completes
-      setTimeout(() => {
-        onImageClick(image.colorSlug);
-      }, 10);
-    }
+    // Simply update selected image - no color switching to prevent reordering
+    setSelectedImage(index);
   };
   
   // Check if image is base64 (data:image/...)
@@ -102,7 +83,7 @@ export default function ProductGallery({ images, productName, onImageClick }) {
           
           return (
             <button
-              key={index}
+              key={`thumb-desktop-${image.url}-${index}`}
               type="button"
               onClick={(e) => {
                 e.preventDefault();
@@ -218,7 +199,7 @@ export default function ProductGallery({ images, productName, onImageClick }) {
             
             return (
               <button
-                key={index}
+                key={`thumb-mobile-${image.url}-${index}`}
                 type="button"
                 onClick={(e) => {
                   e.preventDefault();

@@ -74,6 +74,7 @@
   justify-content: space-between;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  position: relative;
 }
 
 .sidebar-logo {
@@ -159,6 +160,53 @@
 .sidebar-toggle-btn:hover {
   background-color: var(--neutral-100);
   color: var(--text);
+}
+
+/* Desktop toggle - chỉ hiển thị trên desktop */
+.sidebar-toggle-btn.desktop-toggle {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .sidebar-toggle-btn.desktop-toggle {
+    display: flex;
+  }
+  .sidebar-toggle-btn.mobile-close {
+    display: none;
+  }
+}
+
+/* Mobile close - chỉ hiển thị trên mobile */
+.sidebar-toggle-btn.mobile-close {
+  display: flex;
+}
+
+/* Khi collapsed */
+.collapsed .sidebar-header {
+  justify-content: center;
+  padding: 0 var(--space-2);
+}
+
+/* Logo button khi collapsed - đảm bảo hiển thị */
+.sidebar-logo-collapsed {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-logo-collapsed:hover .sidebar-logo-icon {
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+/* Đảm bảo logo icon luôn hiển thị trong collapsed */
+.collapsed .sidebar-logo-icon {
+  opacity: 1 !important;
+  visibility: visible !important;
 }
 
 /* Sidebar Navigation */

@@ -13,10 +13,7 @@ import {
   BarChart3,
   Settings,
   ChevronLeft,
-  ChevronRight,
-  X,
   ChevronDown,
-  RefreshCw,
   Sparkles
 } from 'lucide-react'
 import * as adminOrderAPI from '@/lib/api/adminOrders'
@@ -98,7 +95,7 @@ const navigationGroups = [
   }
 ]
 
-export function AdminSidebar({ isOpen, onClose }) {
+export function AdminSidebar() {
   const pathname = usePathname()
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [expandedMenus, setExpandedMenus] = useState({})
@@ -137,42 +134,44 @@ export function AdminSidebar({ isOpen, onClose }) {
 
   return (
     <>
-      {/* Mobile Overlay */}
-      <div 
-        className={`admin-overlay ${isOpen ? 'show' : ''}`}
-        onClick={onClose}
-      />
-
       {/* Sidebar */}
       <aside 
-        className={`admin-sidebar ${isCollapsed ? 'collapsed' : ''} ${isOpen ? 'open' : ''}`}
+        className={`admin-sidebar ${isCollapsed ? 'collapsed' : ''}`}
       >
         {/* Header */}
         <div className="sidebar-header">
-          <Link href="/admin" className="sidebar-logo">
-            <div className="sidebar-logo-icon">
-              <Sparkles size={20} />
-            </div>
-            <span className="sidebar-logo-text">VyronFashion</span>
-          </Link>
-          
-          {/* Desktop Toggle */}
-          <button
-            className="sidebar-toggle-btn hidden lg:flex"
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            title={isCollapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
-          >
-            {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
-          </button>
-
-          {/* Mobile Close */}
-          <button
-            className="sidebar-toggle-btn lg:hidden"
-            onClick={onClose}
-            title="Đóng thanh bên"
-          >
-            <X size={20} />
-          </button>
+          {/* Logo - Click để toggle khi collapsed */}
+          {isCollapsed ? (
+            <button
+              className="sidebar-logo sidebar-logo-collapsed"
+              onClick={() => setIsCollapsed(false)}
+              title="Mở rộng thanh bên"
+              type="button"
+            >
+              <div className="sidebar-logo-icon">
+                <Sparkles size={20} />
+              </div>
+            </button>
+          ) : (
+            <>
+              <Link href="/admin" className="sidebar-logo">
+                <div className="sidebar-logo-icon">
+                  <Sparkles size={20} />
+                </div>
+                <span className="sidebar-logo-text">VyronFashion</span>
+              </Link>
+              
+              {/* Desktop Toggle - chỉ hiển thị khi mở rộng */}
+              <button
+                className="sidebar-toggle-btn"
+                onClick={() => setIsCollapsed(true)}
+                title="Thu gọn thanh bên"
+                type="button"
+              >
+                <ChevronLeft size={20} />
+              </button>
+            </>
+          )}
         </div>
 
         {/* Navigation */}
@@ -216,7 +215,6 @@ export function AdminSidebar({ isOpen, onClose }) {
                                   <Link
                                     href={subitem.href}
                                     className={`sidebar-submenu-item ${pathname === subitem.href ? 'active' : ''}`}
-                                    onClick={onClose}
                                   >
                                     {subitem.label}
                                   </Link>
@@ -229,7 +227,6 @@ export function AdminSidebar({ isOpen, onClose }) {
                         <Link
                           href={item.href}
                           className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
-                          onClick={onClose}
                         >
                           <Icon className="sidebar-nav-item-icon" size={20} />
                           <span className="sidebar-nav-item-text">{item.label}</span>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { AdminSidebar } from '@/components/admin/layout/AdminSidebar'
 import { AdminHeader } from '@/components/admin/layout/AdminHeader'
 import { AdminBreadcrumbs } from '@/components/admin/layout/AdminBreadcrumbs'
@@ -12,9 +12,7 @@ import '@/styles/admin-isolation.css'
 
 export default function AdminLayout({ children }) {
   const [authorized, setAuthorized] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const router = useRouter()
-  const pathname = usePathname()
 
   // Kiểm tra quyền truy cập - chỉ dành cho admin
   useEffect(() => {
@@ -40,11 +38,6 @@ export default function AdminLayout({ children }) {
     }
   }, [router])
 
-  // Close sidebar on route change (mobile)
-  useEffect(() => {
-    setSidebarOpen(false)
-  }, [pathname])
-
   if (!authorized) {
     return null
   }
@@ -61,10 +54,7 @@ export default function AdminLayout({ children }) {
       overflow: 'hidden'
     }}>
       {/* Sidebar */}
-      <AdminSidebar 
-        isOpen={sidebarOpen} 
-        onClose={() => setSidebarOpen(false)} 
-      />
+      <AdminSidebar />
 
       {/* Main Content Wrapper */}
       <div className="admin-layout-wrapper" style={{
@@ -74,7 +64,7 @@ export default function AdminLayout({ children }) {
         flexDirection: 'column'
       }}>
         {/* Header */}
-        <AdminHeader onMenuToggle={() => setSidebarOpen(!sidebarOpen)} />
+        <AdminHeader />
 
         {/* Main Content */}
         <main className="admin-main" style={{
