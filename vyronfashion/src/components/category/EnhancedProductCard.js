@@ -327,7 +327,7 @@ export default function EnhancedProductCard({ product }) {
                 NEW
               </span>
             )}
-            {discount && (
+            {discount > 0 && (
               <span className="bg-zinc-800 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg uppercase tracking-wide">
                 -{discount}%
               </span>
@@ -419,9 +419,9 @@ export default function EnhancedProductCard({ product }) {
         </div>
 
         {/* Product Info */}
-        <div className="p-4">
+        <div className="p-4 flex flex-col h-[250px]">
           {/* Product Name */}
-          <h3 className="font-semibold text-zinc-900 mb-2 line-clamp-2 group-hover:text-zinc-600 transition-colors">
+          <h3 className="font-semibold text-zinc-900 mb-2 line-clamp-2 group-hover:text-zinc-600 transition-colors min-h-[48px]">
             {name}
           </h3>
 
@@ -449,7 +449,7 @@ export default function EnhancedProductCard({ product }) {
             <span className="text-xl font-bold text-zinc-900">
               {price.toLocaleString('vi-VN')}đ
             </span>
-            {originalPrice && (
+            {originalPrice && originalPrice > price && (
               <span className="text-sm text-zinc-500 line-through">
                 {originalPrice.toLocaleString('vi-VN')}đ
               </span>
@@ -458,7 +458,7 @@ export default function EnhancedProductCard({ product }) {
 
           {/* Size Selection + Quick Add */}
           {inStock && (
-            <div className="space-y-2">
+            <div className="space-y-2 mt-auto">
               {/* Size Selector */}
               <div className="flex flex-wrap gap-1.5">
                 {availableSizes.map((size) => (

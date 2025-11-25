@@ -1,11 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { StarIcon } from '@heroicons/react/24/solid';
-import { StarIcon as StarOutline } from '@heroicons/react/24/outline';
+import { StarIcon as StarOutline, EyeIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 
 export default function ProductInfo({ product }) {
   const { name, brand, sku, category, pricing, rating, short_description, badges } = product;
+  const [isDescriptionOpen, setIsDescriptionOpen] = useState(false);
 
   const renderStars = (score) => {
     return (
@@ -121,10 +123,33 @@ export default function ProductInfo({ product }) {
         </div>
       )}
 
-      {/* Short Description */}
+      {/* Short Description - Accordion */}
       {short_description && (
-        <div className="prose prose-sm text-gray-600">
-          <p>{short_description}</p>
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setIsDescriptionOpen(!isDescriptionOpen)}
+            className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <EyeIcon className="w-5 h-5 text-gray-600" />
+              <span className="font-medium text-gray-900">Thông tin sản phẩm</span>
+            </div>
+            <ChevronDownIcon 
+              className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${
+                isDescriptionOpen ? 'rotate-180' : ''
+              }`} 
+            />
+          </button>
+          
+          <div 
+            className={`overflow-hidden transition-all duration-300 ease-in-out ${
+              isDescriptionOpen ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'
+            }`}
+          >
+            <div className="px-4 py-4 text-gray-600 text-sm leading-relaxed whitespace-pre-line border-t border-gray-200">
+              {short_description}
+            </div>
+          </div>
         </div>
       )}
     </div>

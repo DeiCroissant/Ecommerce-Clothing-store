@@ -70,10 +70,10 @@ export default function SwipeableGallery() {
               slug: product.slug,
               image: productImage,
               title: product.name,
-              description: product.short_description || `Được ${product.wishlist_count || 0} người yêu thích`,
               link: `/products/${product.slug}`,
               color: gradients[index % gradients.length],
-              wishlistCount: product.wishlist_count || 0
+              wishlistCount: product.wishlist_count || 0,
+              price: product.pricing?.sale || product.pricing?.original || 0
             };
           });
           
@@ -219,42 +219,51 @@ export default function SwipeableGallery() {
                   )}
                 </div>
 
-                {/* Gradient Overlay */}
-                <div className={`absolute inset-0 bg-gradient-to-t ${product.color} opacity-60 group-hover:opacity-40 transition-opacity duration-500`} />
+                {/* Gradient Overlay - giữ màu gradient nhẹ */}
+                <div className={`absolute inset-0 bg-gradient-to-t ${product.color} opacity-70 group-hover:opacity-50 transition-opacity duration-500`} />
 
-                {/* Content */}
-                <div className="absolute inset-0 flex flex-col justify-end p-8 text-white">
+                {/* Content - chữ tối trên nền sáng */}
+                <div className="absolute inset-0 flex flex-col justify-end p-6">
+                  {/* Wishlist badge */}
+                  {product.wishlistCount > 0 && (
+                    <motion.div
+                      className="inline-flex items-center gap-1.5 bg-red-500 text-white px-3 py-1 rounded-full text-xs font-semibold mb-3 shadow-md w-fit"
+                      initial={{ y: 20, opacity: 0 }}
+                      whileInView={{ y: 0, opacity: 1 }}
+                      transition={{ delay: 0.2 }}
+                    >
+                      ❤️ {product.wishlistCount} yêu thích
+                    </motion.div>
+                  )}
+                  
+                  {/* Title - chữ tối */}
                   <motion.h3
-                    className="text-2xl md:text-3xl font-bold mb-2"
+                    className="text-xl md:text-2xl font-bold mb-2 text-zinc-800 line-clamp-2"
                     initial={{ y: 20, opacity: 0 }}
                     whileInView={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.2 }}
+                    transition={{ delay: 0.25 }}
                   >
                     {product.title}
                   </motion.h3>
-                  <motion.p
-                    className="text-sm md:text-base text-white/90 mb-4"
-                    initial={{ y: 20, opacity: 0 }}
-                    whileInView={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.3 }}
-                  >
-                    {product.description}
-                  </motion.p>
-                  {product.wishlistCount > 0 && (
+                  
+                  {/* Price */}
+                  {product.price > 0 && (
                     <motion.div
-                      className="text-xs text-white/80 mb-2"
+                      className="text-lg font-bold text-red-600 mb-3"
                       initial={{ y: 20, opacity: 0 }}
                       whileInView={{ y: 0, opacity: 1 }}
-                      transition={{ delay: 0.35 }}
+                      transition={{ delay: 0.3 }}
                     >
-                      ❤️ {product.wishlistCount} người yêu thích
+                      {product.price.toLocaleString('vi-VN')}₫
                     </motion.div>
                   )}
+                  
+                  {/* CTA Button - nền trắng bo tròn */}
                   <motion.div
-                    className="inline-flex items-center gap-2 text-sm font-semibold group-hover:translate-x-2 transition-transform"
+                    className="inline-flex items-center gap-2 text-sm font-semibold bg-white text-zinc-900 px-4 py-2 rounded-full shadow-lg hover:bg-zinc-100 hover:shadow-xl transition-all duration-300 w-fit"
                     initial={{ y: 20, opacity: 0 }}
                     whileInView={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.4 }}
+                    transition={{ delay: 0.35 }}
                   >
                     Khám phá ngay
                     <ArrowRight className="w-4 h-4" />

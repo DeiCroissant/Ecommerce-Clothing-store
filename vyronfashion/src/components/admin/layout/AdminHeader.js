@@ -376,7 +376,8 @@ export function AdminHeader() {
                   className="admin-dropdown-item" 
                   onClick={() => {
                     setShowUserMenu(false)
-                    router.push('/account/overview')
+                    // Use window.location to force full page reload and exit admin layout
+                    window.location.href = '/account/overview'
                   }}
                 >
                   <UserIcon size={16} />

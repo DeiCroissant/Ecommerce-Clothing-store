@@ -32,7 +32,7 @@ export default function NewArrivals() {
             slug: product.slug,
             name: product.name,
             price: product.pricing?.sale || product.pricing?.original || 0,
-            originalPrice: product.pricing?.original && product.pricing?.sale ? product.pricing.original : null,
+            originalPrice: product.pricing?.original && product.pricing?.sale && product.pricing.original > product.pricing.sale ? product.pricing.original : null,
             image: product.image || '',
             rating: typeof product.rating === 'number' 
               ? product.rating 

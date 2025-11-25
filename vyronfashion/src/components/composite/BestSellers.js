@@ -86,7 +86,7 @@ export default function BestSellers() {
               name: product.name,
               slug: product.slug,
               price: product.pricing?.sale || product.pricing?.original || 0,
-              originalPrice: product.pricing?.original && product.pricing?.sale ? product.pricing.original : null,
+              originalPrice: product.pricing?.original && product.pricing?.sale && product.pricing.original > product.pricing.sale ? product.pricing.original : null,
               image: product.image || product.images?.[0] || '',
               rating: typeof product.rating === 'number' 
                 ? product.rating 

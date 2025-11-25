@@ -269,7 +269,7 @@ export default function Header() {
                 
                 {/* Dropdown Subcategories */}
                 {category.subcategories && category.subcategories.length > 0 && (
-                  <div className="absolute top-full left-0 w-48 bg-white shadow-lg rounded-lg py-2 border border-zinc-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                  <div className="absolute top-full left-0 w-48 bg-white shadow-lg rounded-lg py-2 border border-zinc-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-[60]">
                     {category.subcategories.map((sub) => (
                       <Link
                         key={sub.slug || sub}
