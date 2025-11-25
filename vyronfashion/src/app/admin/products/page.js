@@ -487,7 +487,9 @@ export default function AdminProductsPage() {
           }}
           onSave={async (productData) => {
             try {
-              if (selectedProduct) {
+              const isUpdate = !!selectedProduct
+              
+              if (isUpdate) {
                 // Cập nhật sản phẩm
                 await productAPI.updateProduct(selectedProduct.id, productData)
               } else {
@@ -495,24 +497,39 @@ export default function AdminProductsPage() {
                 await productAPI.createProduct(productData)
               }
               
-              // Reload products
-              const response = await productAPI.getProducts({
-                status: filterStatus === 'all' ? undefined : filterStatus,
-                limit: 100
-              })
-              
-              let allProducts = response.products || []
-              if (searchQuery) {
-                allProducts = allProducts.filter(p => 
-                  p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  p.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  p.slug.toLowerCase().includes(searchQuery.toLowerCase())
-                )
-              }
-              setProducts(allProducts)
-              
+              // Đóng modal ngay để cải thiện UX
               setShowAddForm(false)
               setSelectedProduct(null)
+              
+              // Show success toast
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('showToast', { 
+                  detail: { 
+                    message: isUpdate ? 'Cập nhật sản phẩm thành công!' : 'Thêm sản phẩm thành công!', 
+                    type: 'success', 
+                    duration: 3000 
+                  } 
+                }));
+              }
+              
+              // Reload products trong background
+              productAPI.getProducts({
+                status: filterStatus === 'all' ? undefined : filterStatus,
+                limit: 100
+              }).then(response => {
+                let allProducts = response.products || []
+                if (searchQuery) {
+                  allProducts = allProducts.filter(p => 
+                    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    p.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    p.slug.toLowerCase().includes(searchQuery.toLowerCase())
+                  )
+                }
+                setProducts(allProducts)
+              }).catch(err => {
+                console.error('Error reloading products:', err)
+              })
+              
             } catch (error) {
               console.error('Error saving product:', error)
               if (typeof window !== 'undefined') {

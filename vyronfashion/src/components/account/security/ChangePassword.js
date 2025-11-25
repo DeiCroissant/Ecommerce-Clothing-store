@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { Lock, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react'
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
 export function ChangePassword({ user }) {
   const [formData, setFormData] = useState({
     currentPassword: '',
@@ -81,7 +83,7 @@ export function ChangePassword({ user }) {
     setMessage({ type: '', text: '' })
 
     try {
-      const response = await fetch('http://localhost:8000/api/security/change-password', {
+      const response = await fetch(`${API_BASE_URL}/api/security/change-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

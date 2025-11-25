@@ -224,12 +224,21 @@ export default function Header() {
   return (
     <header className="bg-white shadow-sm sticky top-0 z-50 border-b border-zinc-200">
       {/* Top Bar */}
-      <div className="bg-zinc-900 text-white text-sm py-2">
-        <div className="container mx-auto px-4 flex justify-between items-center">
-          <p>Miễn phí vận chuyển cho đơn hàng trên 500.000đ</p>
-          <div className="flex gap-4">
-            <Link href="/help" className="hover:text-zinc-300 transition-colors">Trợ giúp</Link>
-            <Link href="/contact" className="hover:text-zinc-300 transition-colors">Liên hệ</Link>
+      <div className="bg-zinc-900 text-white text-sm py-2 overflow-hidden relative">
+        <div className="container mx-auto px-4 flex justify-center items-center">
+          <div className="flex items-center gap-2">
+            {/* Animated truck icon */}
+            <svg 
+              className="w-5 h-5"
+              style={{
+                animation: 'truck-move 2s ease-in-out infinite'
+              }}
+              fill="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path d="M18 18.5a1.5 1.5 0 01-1 1.415V20a1 1 0 11-2 0v-.085a1.5 1.5 0 010-2.83V17a1 1 0 112 0v.085A1.5 1.5 0 0118 18.5zM6.5 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3zm0-2a.5.5 0 110 1 .5.5 0 010-1zm10 0a.5.5 0 110 1 .5.5 0 010-1zM20 8h-3V4a2 2 0 00-2-2H3a2 2 0 00-2 2v10h1.05a2.5 2.5 0 014.9 0h4.1a2.5 2.5 0 014.9 0H19v-4a2 2 0 011-1.732V8zm-2 4v2h-1a2 2 0 00-2-2h-2V8h3a1 1 0 011 1v3zM3 4h12v8H3V4z"/>
+            </svg>
+            <p className="font-medium">Miễn phí vận chuyển cho đơn hàng trên 500.000đ</p>
           </div>
         </div>
       </div>

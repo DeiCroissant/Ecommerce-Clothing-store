@@ -87,16 +87,16 @@ export default function MiniCartSlideIn({ isOpen, onClose, items = [] }) {
                     style={{ animationDelay: `${index * 50}ms` }}
                   >
                     <img
-                      src={item.image}
-                      alt={item.name}
+                      src={item.product_image || item.image || '/images/placeholders/product-placeholder.jpg'}
+                      alt={item.product_name || item.name}
                       className="w-20 h-20 object-cover rounded-lg"
                     />
                     <div className="flex-1">
                       <h3 className="font-medium text-gray-900 text-sm line-clamp-2">
-                        {item.name}
+                        {item.product_name || item.name}
                       </h3>
                       <p className="text-xs text-gray-500 mt-1">
-                        {item.color} / {item.size}
+                        {item.variant_color || item.color} / {item.variant_size || item.size}
                       </p>
                       <div className="flex items-center justify-between mt-2">
                         <span className="text-sm text-gray-600">

@@ -31,6 +31,7 @@ export default function CategoryDetailPage() {
   const [selectedSubCategory, setSelectedSubCategory] = useState(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteTargetId, setDeleteTargetId] = useState(null)
+  const [deleteType, setDeleteType] = useState('subcategory') // 'subcategory' or 'product'
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [viewMode, setViewMode] = useState('subcategories') // 'subcategories' or 'products'
   const [selectedSubCategoryId, setSelectedSubCategoryId] = useState(null)
@@ -105,35 +106,57 @@ export default function CategoryDetailPage() {
 
   const handleDeleteSubCategory = (subCategoryId) => {
     setDeleteTargetId(subCategoryId)
+    setDeleteType('subcategory')
     setShowDeleteConfirm(true)
   }
 
-  const confirmDeleteSubCategory = async () => {
+  const handleDeleteProduct = (productId) => {
+    setDeleteTargetId(productId)
+    setDeleteType('product')
+    setShowDeleteConfirm(true)
+  }
+
+  const confirmDelete = async () => {
     if (!deleteTargetId) return
     
     try {
-      await categoryAPI.deleteCategory(deleteTargetId)
-      
-      // Reload subcategories
-      const subCategoriesData = await categoryAPI.getSubCategories(categoryId)
-      setSubCategories(subCategoriesData || [])
-      
-      // Dispatch custom event để Header cập nhật ngay
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('categoryChanged'))
-        window.dispatchEvent(new CustomEvent('showToast', { 
-          detail: { message: 'Đã xóa danh mục con thành công!', type: 'success', duration: 3000 } 
-        }));
+      if (deleteType === 'subcategory') {
+        await categoryAPI.deleteCategory(deleteTargetId)
+        
+        // Reload subcategories
+        const subCategoriesData = await categoryAPI.getSubCategories(categoryId)
+        setSubCategories(subCategoriesData || [])
+        
+        // Dispatch custom event để Header cập nhật ngay
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('categoryChanged'))
+          window.dispatchEvent(new CustomEvent('showToast', { 
+            detail: { message: 'Đã xóa danh mục con thành công!', type: 'success', duration: 3000 } 
+          }));
+        }
+      } else if (deleteType === 'product') {
+        await productAPI.deleteProduct(deleteTargetId)
+        
+        // Reload products
+        const productsData = await productAPI.getProductsByCategory(selectedSubCategoryId)
+        setProducts(productsData || [])
+        
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('showToast', { 
+            detail: { message: 'Đã xóa sản phẩm thành công!', type: 'success', duration: 3000 } 
+          }));
+        }
       }
     } catch (error) {
-      console.error('Error deleting subcategory:', error)
+      console.error(`Error deleting ${deleteType}:`, error)
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('showToast', { 
-          detail: { message: 'Lỗi khi xóa danh mục con: ' + error.message, type: 'error', duration: 3000 } 
+          detail: { message: `Lỗi khi xóa ${deleteType === 'product' ? 'sản phẩm' : 'danh mục con'}: ` + error.message, type: 'error', duration: 3000 } 
         }));
       }
     } finally {
       setDeleteTargetId(null)
+      setDeleteType('subcategory')
       setShowDeleteConfirm(false)
     }
   }
@@ -174,39 +197,58 @@ export default function CategoryDetailPage() {
 
   const handleSaveProduct = async (productData) => {
     try {
-    // Set category cho sản phẩm
-    const categoryForProduct = selectedSubCategoryId 
+      // Set category cho sản phẩm
+      const categoryForProduct = selectedSubCategoryId 
         ? subCategories.find(c => c.id === selectedSubCategoryId)
-      : category
-    
-    const productWithCategory = {
-      ...productData,
-      category: {
-        name: categoryForProduct.name,
-        slug: categoryForProduct.slug
+        : category
+      
+      const productWithCategory = {
+        ...productData,
+        category: {
+          name: categoryForProduct.name,
+          slug: categoryForProduct.slug
+        }
       }
-    }
-    
-      if (selectedProduct) {
+      
+      const isUpdate = !!selectedProduct
+      
+      if (isUpdate) {
         await productAPI.updateProduct(selectedProduct.id, productWithCategory)
       } else {
         await productAPI.createProduct(productWithCategory)
       }
       
-      // Reload products
+      // Đóng modal ngay để cải thiện UX
+      setShowProductForm(false)
+      setSelectedProduct(null)
+      
+      // Show success toast
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('showToast', { 
+          detail: { 
+            message: isUpdate ? 'Cập nhật sản phẩm thành công!' : 'Thêm sản phẩm thành công!', 
+            type: 'success', 
+            duration: 3000 
+          } 
+        }));
+      }
+      
+      // Reload products trong background (không block UI)
       if (selectedSubCategoryId && viewMode === 'products') {
         const subCat = subCategories.find(c => c.id === selectedSubCategoryId)
         if (subCat) {
-          const response = await productAPI.getProducts({
+          // Use Promise without await để không block
+          productAPI.getProducts({
             category_slug: subCat.slug,
             status: 'active'
+          }).then(response => {
+            setProducts(response.products || [])
+          }).catch(err => {
+            console.error('Error reloading products:', err)
           })
-          setProducts(response.products || [])
         }
       }
       
-    setShowProductForm(false)
-    setSelectedProduct(null)
     } catch (error) {
       console.error('Error saving product:', error)
       if (typeof window !== 'undefined') {
@@ -503,6 +545,14 @@ export default function CategoryDetailPage() {
                             >
                               <Edit size={16} />
                             </button>
+                            <button 
+                              className="admin-btn admin-btn-sm admin-btn-ghost"
+                              title="Xóa"
+                              onClick={() => handleDeleteProduct(product.id)}
+                              style={{ color: 'var(--error-600)' }}
+                            >
+                              <Trash2 size={16} />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -547,10 +597,14 @@ export default function CategoryDetailPage() {
         onClose={() => {
           setShowDeleteConfirm(false)
           setDeleteTargetId(null)
+          setDeleteType('subcategory')
         }}
-        onConfirm={confirmDeleteSubCategory}
+        onConfirm={confirmDelete}
         title="Xác nhận xóa"
-        message="Bạn có chắc chắn muốn xóa danh mục con này?"
+        message={deleteType === 'product' 
+          ? 'Bạn có chắc chắn muốn xóa sản phẩm này?' 
+          : 'Bạn có chắc chắn muốn xóa danh mục con này?'
+        }
         confirmText="Xóa"
         cancelText="Hủy"
         confirmButtonClass="btn-confirm-delete"

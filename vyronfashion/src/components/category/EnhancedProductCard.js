@@ -31,6 +31,7 @@ import * as cartAPI from '@/lib/api/cart';
 export default function EnhancedProductCard({ product }) {
   const [selectedSize, setSelectedSize] = useState(null);
   const [selectedColor, setSelectedColor] = useState(null);
+  const [hoveredColor, setHoveredColor] = useState(null);
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [showQuickView, setShowQuickView] = useState(false);
@@ -79,7 +80,19 @@ export default function EnhancedProductCard({ product }) {
   const price = product.pricing?.sale || product.pricing?.original || product.price || 0
   const originalPrice = product.pricing?.original && product.pricing?.sale ? product.pricing.original : product.originalPrice
   const discount = product.pricing?.discount_percent || product.discount || 0
-  const image = product.image || product.images?.[0] || ''
+  
+  // Lấy ảnh hiển thị: ưu tiên ảnh của màu được hover, sau đó là ảnh mặc định
+  const getDisplayImage = () => {
+    if (hoveredColor && product.variants?.colors) {
+      const colorObj = product.variants.colors.find(c => (c.slug || c.name) === hoveredColor);
+      if (colorObj?.images && colorObj.images.length > 0) {
+        return colorObj.images[0];
+      }
+    }
+    return product.image || product.images?.[0] || '';
+  };
+  
+  const image = getDisplayImage();
   
   // Xử lý rating: đảm bảo luôn là số, không phải object
   let rating = 0
@@ -351,14 +364,28 @@ export default function EnhancedProductCard({ product }) {
               <div className="flex items-center gap-2 mb-3">
                 <span className="text-white text-xs font-medium">Màu:</span>
                 <div className="flex gap-1.5">
-                  {availableColors.slice(0, 5).map((color, index) => (
-                    <div
-                      key={index}
-                      className="w-6 h-6 rounded-full border-2 border-white shadow-md cursor-pointer hover:scale-110 transition-transform"
-                      style={{ backgroundColor: color.hex }}
-                      title={color.name}
-                    />
-                  ))}
+                  {availableColors.slice(0, 5).map((color, index) => {
+                    const colorValue = color.slug || color.name;
+                    const isHovered = hoveredColor === colorValue;
+                    return (
+                      <div
+                        key={index}
+                        onMouseEnter={(e) => {
+                          e.stopPropagation();
+                          setHoveredColor(colorValue);
+                        }}
+                        onMouseLeave={(e) => {
+                          e.stopPropagation();
+                          setHoveredColor(null);
+                        }}
+                        className={`w-6 h-6 rounded-full border-2 shadow-md cursor-pointer hover:scale-125 transition-all duration-200 ${
+                          isHovered ? 'border-blue-400 scale-125 ring-2 ring-blue-400/50' : 'border-white'
+                        }`}
+                        style={{ backgroundColor: color.hex }}
+                        title={color.name}
+                      />
+                    );
+                  })}
                   {availableColors.length > 5 && (
                     <div className="w-6 h-6 rounded-full bg-white/20 backdrop-blur-sm border-2 border-white flex items-center justify-center">
                       <span className="text-white text-xs">+{availableColors.length - 5}</span>

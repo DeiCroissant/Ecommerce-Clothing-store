@@ -9,6 +9,7 @@ import { mockCategories, getSubCategories } from '@/lib/admin/mockCategoriesData
  * Form thêm/chỉnh sửa sản phẩm dựa trên cấu trúc mock data
  */
 export default function ProductFormModal({ product, defaultCategory, onClose, onSave }) {
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [formData, setFormData] = useState({
     name: '',
     slug: '',
@@ -197,9 +198,20 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
     }
   }, [formData.pricing.original, formData.pricing.sale])
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    onSave(formData)
+    
+    // Prevent double submission
+    if (isSubmitting) return
+    
+    setIsSubmitting(true)
+    try {
+      await onSave(formData)
+    } catch (error) {
+      console.error('Error in form submission:', error)
+      setIsSubmitting(false)
+    }
+    // Note: không setIsSubmitting(false) ở đây vì parent component sẽ đóng modal
   }
 
   return (
@@ -606,7 +618,51 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
                       marginTop: 'var(--space-3)'
                     }}>
                       {color.images.map((img, imgIndex) => (
-                        <div key={imgIndex} style={{ position: 'relative' }}>
+                        <div 
+                          key={imgIndex} 
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.effectAllowed = 'move';
+                            e.dataTransfer.setData('text/html', imgIndex.toString());
+                            e.currentTarget.style.opacity = '0.4';
+                          }}
+                          onDragEnd={(e) => {
+                            e.currentTarget.style.opacity = '1';
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                            e.currentTarget.style.border = '2px dashed var(--primary-500)';
+                          }}
+                          onDragLeave={(e) => {
+                            e.currentTarget.style.border = '1px solid var(--border)';
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.currentTarget.style.border = '1px solid var(--border)';
+                            
+                            const dragIndex = parseInt(e.dataTransfer.getData('text/html'));
+                            const dropIndex = imgIndex;
+                            
+                            if (dragIndex !== dropIndex) {
+                              const newColors = [...formData.variants.colors];
+                              const newImages = [...newColors[index].images];
+                              const [draggedImage] = newImages.splice(dragIndex, 1);
+                              newImages.splice(dropIndex, 0, draggedImage);
+                              newColors[index].images = newImages;
+                              
+                              setFormData(prev => ({
+                                ...prev,
+                                variants: { ...prev.variants, colors: newColors }
+                              }));
+                            }
+                          }}
+                          style={{ 
+                            position: 'relative',
+                            cursor: 'move',
+                            transition: 'all 0.2s'
+                          }}
+                        >
                           <img
                             src={img}
                             alt={`${color.name || 'Màu'} - ${imgIndex + 1}`}
@@ -615,9 +671,28 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
                               height: '80px',
                               objectFit: 'cover',
                               borderRadius: 'var(--radius-sm)',
-                              border: '1px solid var(--border)'
+                              border: '1px solid var(--border)',
+                              pointerEvents: 'none'
                             }}
                           />
+                          {/* Badge số thứ tự */}
+                          <div style={{
+                            position: 'absolute',
+                            top: '4px',
+                            left: '4px',
+                            width: '20px',
+                            height: '20px',
+                            borderRadius: '50%',
+                            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '11px',
+                            fontWeight: 'bold'
+                          }}>
+                            {imgIndex + 1}
+                          </div>
                           <button
                             type="button"
                             onClick={() => {
@@ -1053,15 +1128,21 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
               type="button"
               className="admin-btn admin-btn-ghost"
               onClick={onClose}
+              disabled={isSubmitting}
             >
               Hủy
             </button>
             <button
               type="submit"
               className="admin-btn admin-btn-primary"
+              disabled={isSubmitting}
+              style={{
+                opacity: isSubmitting ? 0.6 : 1,
+                cursor: isSubmitting ? 'not-allowed' : 'pointer'
+              }}
             >
-              <Save size={16} />
-              <span>{product ? 'Cập nhật' : 'Thêm'} sản phẩm</span>
+              <Save size={16} style={{ animation: isSubmitting ? 'spin 1s linear infinite' : 'none' }} />
+              <span>{isSubmitting ? 'Đang lưu...' : (product ? 'Cập nhật' : 'Thêm') + ' sản phẩm'}</span>
             </button>
           </div>
         </form>

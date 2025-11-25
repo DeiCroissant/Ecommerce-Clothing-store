@@ -22,6 +22,11 @@ import * as productAPI from '@/lib/api/products';
 import * as addressAPI from '@/lib/api/addresses';
 import { validateCoupon } from '@/lib/api/adminCoupons';
 
+// Khai báo trực tiếp để tránh lỗi import
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+console.log('🔧 Cart Page - API_BASE_URL:', API_BASE_URL);
+console.log('🔧 Cart Page - NEXT_PUBLIC_API_URL:', process.env.NEXT_PUBLIC_API_URL);
+
 export default function CartPage() {
   const [cartItems, setCartItems] = useState([]);
   const [savedItems, setSavedItems] = useState([]);
@@ -107,6 +112,9 @@ export default function CartPage() {
               return {
                 id: `${item.product_id}-${index}`,
                 productId: item.product_id,
+                product_id: item.product_id, // Keep raw for API calls
+                variant_color: item.variant_color, // Keep raw for API calls
+                variant_size: item.variant_size, // Keep raw for API calls
                 slug: product?.slug || '',
                 name: item.product_name || product?.name || 'Sản phẩm',
                 brand: product?.brand?.name || 'VYRON',
@@ -142,6 +150,9 @@ export default function CartPage() {
               return {
                 id: `${item.product_id}-${index}`,
                 productId: item.product_id,
+                product_id: item.product_id, // Keep raw for API calls
+                variant_color: item.variant_color, // Keep raw for API calls
+                variant_size: item.variant_size, // Keep raw for API calls
                 slug: '',
                 name: item.product_name || 'Sản phẩm',
                 brand: 'VYRON',
@@ -206,7 +217,7 @@ export default function CartPage() {
     const loadShippingOptions = async () => {
       try {
         setLoadingShipping(true);
-        const response = await fetch('http://localhost:8000/api/settings/payments');
+        const response = await fetch(`${API_BASE_URL}/api/settings/payments`);
         const data = await response.json();
 
         if (data.success) {
@@ -351,9 +362,14 @@ export default function CartPage() {
     // Optimistic update
     setCartItems(prev => prev.filter(i => i.id !== itemId));
 
-    // Delete via API
+    // Delete via API using product_id and variant instead of index
     try {
-      await cartAPI.removeCartItem(userId, item.itemIndex);
+      await cartAPI.removeCartItem(
+        userId, 
+        item.product_id, 
+        item.variant_color, 
+        item.variant_size
+      );
       // Dispatch event to update cart count in header
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('cartChanged'));

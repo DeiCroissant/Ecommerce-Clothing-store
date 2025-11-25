@@ -1,118 +1,37 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import ProductCard from '@/components/ui/ProductCard';
+import EnhancedProductCard from '@/components/category/EnhancedProductCard';
 import { FireIcon } from '@heroicons/react/24/solid';
-
-// Dữ liệu mẫu - sau này sẽ fetch từ API GET /analytics/hot-products
-const BEST_SELLERS = [
-  {
-    id: 11,
-    name: 'Áo Thun Trơn Basic',
-    slug: 'ao-thun-tron-basic',
-    price: 199000,
-    originalPrice: 249000,
-    image: '/images/products/bestseller-1.jpg',
-    rating: 4.9,
-    reviewCount: 342,
-    discount: 20
-  },
-  {
-    id: 12,
-    name: 'Quần Jean Straight',
-    slug: 'quan-jean-straight',
-    price: 549000,
-    originalPrice: 699000,
-    image: '/images/products/bestseller-2.jpg',
-    rating: 4.8,
-    reviewCount: 298,
-    discount: 21
-  },
-  {
-    id: 13,
-    name: 'Váy Midi Thanh Lịch',
-    slug: 'vay-midi-thanh-lich',
-    price: 399000,
-    image: '/images/products/bestseller-3.jpg',
-    rating: 4.7,
-    reviewCount: 256
-  },
-  {
-    id: 14,
-    name: 'Áo Sơ Mi Trắng',
-    slug: 'ao-so-mi-trang',
-    price: 349000,
-    originalPrice: 449000,
-    image: '/images/products/bestseller-4.jpg',
-    rating: 4.9,
-    reviewCount: 387,
-    discount: 22
-  },
-  {
-    id: 15,
-    name: 'Quần Tây Công Sở',
-    slug: 'quan-tay-cong-so',
-    price: 449000,
-    image: '/images/products/bestseller-5.jpg',
-    rating: 4.6,
-    reviewCount: 213
-  },
-  {
-    id: 16,
-    name: 'Áo Khoác Cardigan',
-    slug: 'ao-khoac-cardigan',
-    price: 599000,
-    originalPrice: 799000,
-    image: '/images/products/bestseller-6.jpg',
-    rating: 4.8,
-    reviewCount: 276,
-    discount: 25
-  },
-  {
-    id: 17,
-    name: 'Chân Váy Xếp Ly',
-    slug: 'chan-vay-xep-ly',
-    price: 299000,
-    image: '/images/products/bestseller-7.jpg',
-    rating: 4.7,
-    reviewCount: 189
-  },
-  {
-    id: 18,
-    name: 'Áo Len Cổ Lọ',
-    slug: 'ao-len-co-lo',
-    price: 429000,
-    originalPrice: 549000,
-    image: '/images/products/bestseller-8.jpg',
-    rating: 4.9,
-    reviewCount: 324,
-    discount: 22
-  }
-];
+import * as productAPI from '@/lib/api/products';
 
 export default function BestSellers() {
-  const [products, setProducts] = useState(BEST_SELLERS);
-  const [loading, setLoading] = useState(false);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  // Trong tương lai, fetch dữ liệu từ API
+  // Fetch sản phẩm bán chạy từ API
   useEffect(() => {
     const fetchBestSellers = async () => {
       try {
         setLoading(true);
-        // const response = await fetch('/api/analytics/hot-products');
-        // const data = await response.json();
-        // setProducts(data);
+        // Gọi API với sort = best_sellers để lấy sản phẩm có sold_count cao nhất
+        const response = await productAPI.getProducts({
+          sort: 'best_sellers',
+          limit: 8,
+          status: 'active'
+        });
         
-        // Hiện tại dùng dữ liệu mẫu
-        setProducts(BEST_SELLERS);
+        console.log('📊 Best sellers loaded:', response.products?.length || 0);
+        setProducts(response.products || []);
       } catch (error) {
         console.error('Error fetching best sellers:', error);
+        setProducts([]);
       } finally {
         setLoading(false);
       }
     };
 
-    // fetchBestSellers();
+    fetchBestSellers();
   }, []);
 
   if (loading) {
@@ -160,15 +79,37 @@ export default function BestSellers() {
 
         {/* Products Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {products.map((product, index) => (
-            <div
-              key={product.id}
-              className="animate-fadeInUp"
-              style={{ animationDelay: `${index * 0.1}s` }}
-            >
-              <ProductCard product={product} />
-            </div>
-          ))}
+          {products.map((product, index) => {
+            // Transform API data to EnhancedProductCard format
+            const transformedProduct = {
+              id: product.id,
+              name: product.name,
+              slug: product.slug,
+              price: product.pricing?.sale || product.pricing?.original || 0,
+              originalPrice: product.pricing?.original && product.pricing?.sale ? product.pricing.original : null,
+              image: product.image || product.images?.[0] || '',
+              rating: typeof product.rating === 'number' 
+                ? product.rating 
+                : (product.rating?.average || 0),
+              reviewCount: typeof product.reviewCount === 'number'
+                ? product.reviewCount
+                : (product.rating?.count || 0),
+              discount: product.pricing?.discount_percent || 0,
+              sold_count: product.sold_count || 0,
+              // Include full product data for EnhancedProductCard
+              ...product
+            };
+
+            return (
+              <div
+                key={product.id}
+                className="animate-fadeInUp"
+                style={{ animationDelay: `${index * 0.1}s` }}
+              >
+                <EnhancedProductCard product={transformedProduct} />
+              </div>
+            );
+          })}
         </div>
 
         {/* View All Button */}

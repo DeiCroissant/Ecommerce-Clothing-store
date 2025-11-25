@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { Shield, Mail, AlertCircle, CheckCircle2 } from 'lucide-react'
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
 export function TwoFactorAuth({ user, enabled, onToggle }) {
   const [isEnabled, setIsEnabled] = useState(enabled)
   const [loading, setLoading] = useState(false)
@@ -15,7 +17,7 @@ export function TwoFactorAuth({ user, enabled, onToggle }) {
     setMessage({ type: '', text: '' })
 
     try {
-      const response = await fetch('http://localhost:8000/api/security/2fa/enable', {
+      const response = await fetch(`${API_BASE_URL}/api/security/2fa/enable`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: user.id })
@@ -51,7 +53,7 @@ export function TwoFactorAuth({ user, enabled, onToggle }) {
     setMessage({ type: '', text: '' })
 
     try {
-      const response = await fetch('http://localhost:8000/api/security/2fa/disable', {
+      const response = await fetch(`${API_BASE_URL}/api/security/2fa/disable`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 

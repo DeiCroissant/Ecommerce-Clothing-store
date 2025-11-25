@@ -3,6 +3,10 @@
 import { useState, useEffect } from 'react'
 import { CreditCard, Truck, Save, Loader, CheckCircle, XCircle } from 'lucide-react'
 
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
+import Link from 'next/link';
+import { API_BASE_URL } from '@/lib/config';
+
 export default function PaymentsSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -14,7 +18,7 @@ export default function PaymentsSettingsPage() {
     async function loadSettings() {
       try {
         setLoading(true)
-        const response = await fetch('http://localhost:8000/api/settings/payments')
+        const response = await fetch(`${API_BASE_URL}/api/settings/payments`)
         const data = await response.json()
         
         if (data.success) {
@@ -58,7 +62,7 @@ export default function PaymentsSettingsPage() {
     setSaving(true)
     
     try {
-      const response = await fetch('http://localhost:8000/api/settings/payments', {
+      const response = await fetch(`${API_BASE_URL}/api/settings/payments`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

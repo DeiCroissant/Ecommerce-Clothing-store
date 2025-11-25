@@ -1,7 +1,8 @@
-'use client';
+'use client'
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { API_BASE_URL } from '@/lib/config';
 import Link from 'next/link';
 import Image from 'next/image';
 import { 
@@ -46,7 +47,7 @@ export default function CheckoutPage() {
   useEffect(() => {
     async function loadPaymentOptions() {
       try {
-        const response = await fetch('http://localhost:8000/api/settings/payments');
+        const response = await fetch(`${API_BASE_URL}/api/settings/payments`);
         const data = await response.json();
 
         if (data.success) {

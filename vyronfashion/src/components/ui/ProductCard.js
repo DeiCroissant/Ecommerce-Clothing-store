@@ -1,10 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { StarIcon } from '@heroicons/react/24/solid';
 import { ShoppingCartIcon } from '@heroicons/react/24/outline';
 
 export default function ProductCard({ product }) {
+  const [hoveredColor, setHoveredColor] = useState(null);
+  
   const {
     id,
     slug,
@@ -15,8 +18,23 @@ export default function ProductCard({ product }) {
     rating = 0,
     reviewCount = 0,
     isNew = false,
-    discount = 0
+    discount = 0,
+    variants
   } = product;
+
+  // Lấy ảnh hiển thị: ưu tiên ảnh của màu được hover
+  const getDisplayImage = () => {
+    if (hoveredColor && variants?.colors) {
+      const colorObj = variants.colors.find(c => (c.slug || c.name) === hoveredColor);
+      if (colorObj?.images && colorObj.images.length > 0) {
+        return colorObj.images[0];
+      }
+    }
+    return image || product.images?.[0] || '/images/placeholders/product-placeholder.jpg';
+  };
+
+  const displayImage = getDisplayImage();
+  const availableColors = variants?.colors?.filter(c => c.available) || [];
 
   return (
     <div className="group relative bg-white rounded-lg border border-zinc-200 hover:border-zinc-300 transition-all duration-300 overflow-hidden">
@@ -39,10 +57,38 @@ export default function ProductCard({ product }) {
       {/* Image */}
       <Link href={`/products/${slug}`} className="block relative aspect-[3/4] overflow-hidden bg-stone-50">
         <img
-          src={image || '/images/placeholders/product-placeholder.jpg'}
+          src={displayImage}
           alt={name}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
         />
+        
+        {/* Color Swatches Overlay - hiện khi hover */}
+        {availableColors.length > 0 && (
+          <div className="absolute bottom-14 left-1/2 -translate-x-1/2 translate-y-full group-hover:translate-y-0 transition-transform duration-300 flex gap-2 bg-white/90 backdrop-blur-sm px-3 py-2 rounded-full shadow-lg">
+            {availableColors.slice(0, 5).map((color, index) => {
+              const colorValue = color.slug || color.name;
+              const isHovered = hoveredColor === colorValue;
+              return (
+                <div
+                  key={index}
+                  onMouseEnter={(e) => {
+                    e.preventDefault();
+                    setHoveredColor(colorValue);
+                  }}
+                  onMouseLeave={(e) => {
+                    e.preventDefault();
+                    setHoveredColor(null);
+                  }}
+                  className={`w-5 h-5 rounded-full border-2 cursor-pointer transition-all duration-200 ${
+                    isHovered ? 'border-blue-500 scale-125 ring-2 ring-blue-400/50' : 'border-white'
+                  }`}
+                  style={{ backgroundColor: color.hex }}
+                  title={color.name}
+                />
+              );
+            })}
+          </div>
+        )}
         
         {/* Quick Add to Cart - hiện khi hover */}
         <button className="absolute bottom-4 left-1/2 -translate-x-1/2 translate-y-full group-hover:translate-y-0 transition-transform duration-300 bg-zinc-900 text-white px-4 py-2 rounded-full flex items-center gap-2 hover:bg-zinc-800">

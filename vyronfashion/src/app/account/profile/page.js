@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { API_BASE_URL } from '@/lib/config';
 import { PageHeader, AccountCard, LoadingSkeleton } from '@/components/account'
 import { ProfileForm } from '@/components/account/profile/ProfileForm'
 import { AvatarUpload } from '@/components/account/profile/AvatarUpload'
@@ -22,7 +23,7 @@ export default function ProfilePage() {
         }
 
         const userData = JSON.parse(userFromStorage)
-        const response = await fetch(`http://localhost:8000/api/user/${userData.id}`)
+        const response = await fetch(`${API_BASE_URL}/api/user/${userData.id}`)
         
         if (!response.ok) throw new Error('Không thể tải thông tin người dùng')
 
@@ -41,7 +42,7 @@ export default function ProfilePage() {
 
   const handleUpdate = async (updatedData) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/user/${user.id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/user/${user.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedData),

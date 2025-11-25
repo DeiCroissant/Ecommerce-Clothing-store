@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { LockClosedIcon, EyeIcon, EyeSlashIcon, ExclamationCircleIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { API_BASE_URL } from '@/lib/config';
 
 function cls(...args) { return args.filter(Boolean).join(' '); }
 
@@ -49,7 +50,7 @@ export default function ResetPasswordPage() {
 
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/auth/reset-password', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

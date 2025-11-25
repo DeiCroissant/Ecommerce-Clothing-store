@@ -154,10 +154,23 @@ export async function getProductsByCategory(categorySlug, params = {}) {
  */
 export async function getProductBySlug(slug) {
   try {
-    const response = await getProducts({ slug: slug, limit: 1 })
+    // Gọi API với slug parameter
+    const queryParams = new URLSearchParams({ slug: slug, limit: '1' })
+    const url = `${API_BASE_URL}/api/products?${queryParams.toString()}`
     
-    if (response.products && response.products.length > 0) {
-      return response.products[0]
+    console.log('Fetching product by slug:', slug, 'URL:', url)
+    const response = await fetch(url)
+    
+    if (!response.ok) {
+      console.error('API Error:', response.status)
+      return null
+    }
+    
+    const data = await response.json()
+    console.log('Product by slug response:', data)
+    
+    if (data.products && data.products.length > 0) {
+      return data.products[0]
     }
     
     return null

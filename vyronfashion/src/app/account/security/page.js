@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { API_BASE_URL } from '@/lib/config';
 import { PageHeader, AccountCard, LoadingSkeleton } from '@/components/account'
 import { TwoFactorAuth } from '@/components/account/security/TwoFactorAuth'
 import { ChangePassword } from '@/components/account/security/ChangePassword'
@@ -25,13 +26,13 @@ export default function SecurityPage() {
         const userData = JSON.parse(userFromStorage)
         
         // Lấy thông tin user
-        const userResponse = await fetch(`http://localhost:8000/api/user/${userData.id}`)
+        const userResponse = await fetch(`${API_BASE_URL}/api/user/${userData.id}`)
         if (!userResponse.ok) throw new Error('Không thể tải thông tin người dùng')
         const userDetails = await userResponse.json()
         setUser(userDetails)
 
         // Lấy trạng thái 2FA
-        const twoFactorResponse = await fetch(`http://localhost:8000/api/security/2fa/status/${userData.id}`)
+        const twoFactorResponse = await fetch(`${API_BASE_URL}/api/security/2fa/status/${userData.id}`)
         if (twoFactorResponse.ok) {
           const twoFactorData = await twoFactorResponse.json()
           setTwoFactorEnabled(twoFactorData.two_factor_enabled)

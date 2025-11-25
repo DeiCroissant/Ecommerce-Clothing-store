@@ -86,12 +86,20 @@ from datetime import datetime, timedelta
 import bcrypt
 from bson import ObjectId
 import secrets
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = FastAPI(
     title="Vyron Fashion API",
     description="Backend API cho ứng dụng thời trang",
     version="1.0.0"
 )
+
+# Get frontend URL from environment
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 # CORS middleware - Phải đặt TRƯỚC tất cả các route
 app.add_middleware(
@@ -103,6 +111,36 @@ app.add_middleware(
     expose_headers=["*"],  # Expose tất cả headers
     max_age=3600,  # Cache preflight request trong 1 giờ
 )
+
+@app.on_event("startup")
+async def startup_event():
+    """Tạo indexes khi khởi động server để tối ưu performance"""
+    try:
+        print("🚀 Creating database indexes...")
+        
+        # Products collection indexes
+        await products_collection.create_index("slug", unique=True)
+        await products_collection.create_index("category.slug")
+        await products_collection.create_index("status")
+        await products_collection.create_index([("created_at", -1)])
+        await products_collection.create_index([("wishlist_count", -1)])
+        await products_collection.create_index([("pricing.sale", 1)])
+        await products_collection.create_index([("pricing.sale", -1)])
+        
+        # Categories collection indexes
+        await categories_collection.create_index("slug", unique=True)
+        
+        # Orders collection indexes
+        await orders_collection.create_index("user_id")
+        await orders_collection.create_index([("created_at", -1)])
+        
+        # Reviews collection indexes
+        await reviews_collection.create_index("product_id")
+        await reviews_collection.create_index("user_id")
+        
+        print("✅ Database indexes created successfully")
+    except Exception as e:
+        print(f"⚠️ Error creating indexes: {str(e)}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -582,8 +620,8 @@ async def forgot_password(request: ForgotPasswordRequest):
             }
         )
         
-        # Tạo reset URL
-        reset_url = f"http://localhost:3000/reset-password?token={reset_token}"
+        # Tạo reset URL với frontend URL từ environment
+        reset_url = f"{FRONTEND_URL}/reset-password?token={reset_token}"
         
         # Gửi email
         email_sent = await send_reset_password_email(
@@ -990,15 +1028,39 @@ async def get_products(
             sort_dict = {"pricing.sale": -1}
         elif sort == 'popular' or sort == 'most_wishlisted':
             sort_dict = {"wishlist_count": -1, "created_at": -1}  # Sort by wishlist_count desc, then by created_at
+        elif sort == 'best_sellers' or sort == 'most_sold':
+            sort_dict = {"sold_count": -1, "created_at": -1}  # Sort by sold_count desc (most sold first)
         else:
             sort_dict = {"created_at": -1}
         
-        # Đếm tổng số
+        # Đếm tổng số (tối ưu với hint index)
         total = await products_collection.count_documents(query)
         total_pages = (total + limit - 1) // limit
         
-        # Lấy sản phẩm
-        cursor = products_collection.find(query).sort(list(sort_dict.items())).skip(skip).limit(limit)
+        # Projection - chỉ lấy các field cần thiết để giảm data transfer
+        projection = {
+            "_id": 1,
+            "name": 1,
+            "slug": 1,
+            "sku": 1,
+            "brand": 1,
+            "category": 1,
+            "pricing": 1,
+            "short_description": 1,
+            "image": 1,
+            "images": 1,
+            "variants": 1,
+            "inventory": 1,
+            "status": 1,
+            "rating": 1,
+            "wishlist_count": 1,
+            "sold_count": 1,
+            "created_at": 1,
+            "updated_at": 1
+        }
+        
+        # Lấy sản phẩm với projection
+        cursor = products_collection.find(query, projection).sort(list(sort_dict.items())).skip(skip).limit(limit)
         products = await cursor.to_list(length=None)
         
         result = []
@@ -2053,13 +2115,23 @@ async def add_to_cart(user_id: str = Query(...), product_id: str = Query(...),
         if not product:
             raise HTTPException(status_code=404, detail="Không tìm thấy sản phẩm")
         
+        # Lấy ảnh theo màu đã chọn (nếu có)
+        product_image = product.get("image", "")
+        if color and product.get("variants", {}).get("colors"):
+            colors = product.get("variants", {}).get("colors", [])
+            for color_obj in colors:
+                if (color_obj.get("slug") == color or color_obj.get("name") == color):
+                    if color_obj.get("images") and len(color_obj.get("images")) > 0:
+                        product_image = color_obj["images"][0]
+                        break
+        
         # Tìm cart của user
         cart = await cart_collection.find_one({"user_id": user_id})
         
         cart_item = {
             "product_id": product_id,
             "product_name": product.get("name", ""),
-            "product_image": product.get("image", ""),
+            "product_image": product_image,  # Ảnh theo màu đã chọn
             "variant_color": color,
             "variant_size": size,
             "quantity": quantity,
@@ -2158,9 +2230,51 @@ async def update_cart_item_quantity(user_id: str = Path(...), item_index: int = 
             detail=f"Lỗi server: {str(e)}"
         )
 
+@app.delete("/api/cart/{user_id}/item")
+async def remove_cart_item_by_variant(
+    user_id: str = Path(...), 
+    product_id: str = Query(...),
+    color: Optional[str] = Query(None),
+    size: Optional[str] = Query(None)
+):
+    """Xóa item khỏi giỏ hàng theo product_id và variant"""
+    try:
+        cart = await cart_collection.find_one({"user_id": user_id})
+        if not cart:
+            raise HTTPException(status_code=404, detail="Không tìm thấy giỏ hàng")
+        
+        items = cart.get("items", [])
+        
+        # Tìm và xóa item khớp với product_id và variant
+        found = False
+        for i, item in enumerate(items):
+            if (item.get("product_id") == product_id and 
+                item.get("variant_color") == color and 
+                item.get("variant_size") == size):
+                items.pop(i)
+                found = True
+                break
+        
+        if not found:
+            raise HTTPException(status_code=404, detail="Không tìm thấy sản phẩm trong giỏ hàng")
+        
+        await cart_collection.update_one(
+            {"user_id": user_id},
+            {"$set": {"items": items, "updated_at": datetime.now().isoformat()}}
+        )
+        
+        return {"success": True, "message": "Đã xóa khỏi giỏ hàng"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
 @app.delete("/api/cart/{user_id}/{item_index}")
 async def remove_cart_item(user_id: str = Path(...), item_index: int = Path(...)):
-    """Xóa item khỏi giỏ hàng"""
+    """Xóa item khỏi giỏ hàng (legacy endpoint)"""
     try:
         cart = await cart_collection.find_one({"user_id": user_id})
         if not cart:
@@ -3731,5 +3845,13 @@ async def update_payment_settings(settings_update: PaymentSettingsUpdate):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import os
+    from dotenv import load_dotenv
+    
+    load_dotenv()  # Load .env file
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8000"))
+    
+    print(f"🚀 Starting server on {host}:{port}")
+    uvicorn.run(app, host=host, port=port)
 

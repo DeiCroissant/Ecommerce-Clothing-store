@@ -114,9 +114,12 @@ export default function ProductDetailPage({ params }) {
             foundProduct.variants.sizes = [];
           }
           
-          // Debug: Log variants để kiểm tra
-          console.log('Product loaded - variants:', foundProduct.variants);
-          console.log('Product loaded - sizes:', foundProduct.variants.sizes);
+          // Debug: Log product data để kiểm tra
+          console.log('✅ Product loaded:', foundProduct.name);
+          console.log('📸 Product image:', foundProduct.image);
+          console.log('📸 Product images array:', foundProduct.images);
+          console.log('🎨 Variants colors:', foundProduct.variants.colors);
+          console.log('📏 Variants sizes:', foundProduct.variants.sizes);
           
           setProduct(foundProduct);
           
@@ -233,13 +236,14 @@ export default function ProductDetailPage({ params }) {
         // Combine: selected color images first, then others
         const images = [...selectedColorImages, ...otherImages];
         
-        // Fallback to mock images if no images at all
+        // Nếu không có ảnh nào, dùng placeholder thay vì mock images
         if (images.length === 0) {
-          return getProductImages(slug).map(img => ({
-            url: typeof img === 'string' ? img : img.url,
-            alt: typeof img === 'string' ? '' : img.alt,
+          console.warn('No product images found for slug:', slug);
+          return [{
+            url: product.image || '/images/placeholders/product-placeholder.jpg',
+            alt: product.name || 'Product image',
             colorSlug: null
-          }));
+          }];
         }
         
         return images;

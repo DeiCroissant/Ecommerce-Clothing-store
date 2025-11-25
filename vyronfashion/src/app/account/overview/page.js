@@ -10,6 +10,8 @@ import { RecentOrdersWidget } from '@/components/account/overview/RecentOrdersWi
 import * as orderAPI from '@/lib/api/orders'
 import * as returnsAPI from '@/lib/api/returns'
 import { formatDate, getStatusInfo } from '@/lib/mockOrdersData'
+import Link from 'next/link'
+import { API_BASE_URL } from '@/lib/config'
 
 export default function OverviewPage() {
   const [user, setUser] = useState(null)
@@ -30,7 +32,7 @@ export default function OverviewPage() {
       const userData = JSON.parse(userFromStorage)
       
       // Fetch chi tiết user từ API
-      const response = await fetch(`http://localhost:8000/api/user/${userData.id}`)
+      const response = await fetch(`${API_BASE_URL}/api/user/${userData.id}`)
       
       if (!response.ok) {
         throw new Error('Không thể tải thông tin người dùng')

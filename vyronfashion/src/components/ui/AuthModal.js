@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import Turnstile from 'react-turnstile';
 import { AtSymbolIcon, LockClosedIcon, IdentificationIcon, CalendarIcon, EnvelopeIcon, UserCircleIcon, EyeIcon, EyeSlashIcon, ExclamationCircleIcon, CheckCircleIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
 
+// API Base URL
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 function cls(...args) { return args.filter(Boolean).join(' '); }
 
 // SimpleInput component được định nghĩa bên ngoài để tránh re-render không cần thiết
@@ -283,7 +286,7 @@ export default function AuthModal({ open, onClose, onSuccess }) {
       try {
         // Nếu là 2FA, gọi API verify 2FA
         if (is2FA) {
-          const response = await fetch('http://localhost:8000/api/security/2fa/verify', {
+          const response = await fetch(`${API_BASE_URL}/api/security/2fa/verify`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, code })
@@ -311,7 +314,7 @@ export default function AuthModal({ open, onClose, onSuccess }) {
         }
         
         // Nếu không phải 2FA, xử lý email verification như cũ
-        const response = await fetch('http://localhost:8000/api/auth/verify-email', {
+        const response = await fetch(`${API_BASE_URL}/api/auth/verify-email`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, code })
@@ -331,7 +334,7 @@ export default function AuthModal({ open, onClose, onSuccess }) {
         const tempPassword = pendingVerification?.password;
         if (tempPassword) {
           try {
-            const loginRes = await fetch('http://localhost:8000/api/auth/login', {
+            const loginRes = await fetch(`${API_BASE_URL}/api/auth/login`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ username, password: tempPassword })
@@ -384,7 +387,7 @@ export default function AuthModal({ open, onClose, onSuccess }) {
             }
             
             // Auto login
-            const loginResponse = await fetch('http://localhost:8000/api/auth/login', {
+            const loginResponse = await fetch(`${API_BASE_URL}/api/auth/login`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ username, password, turnstile })
@@ -445,7 +448,7 @@ export default function AuthModal({ open, onClose, onSuccess }) {
 
       setLoading(true);
       try {
-        const response = await fetch('http://localhost:8000/api/auth/forgot-password', {
+        const response = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email })
@@ -485,7 +488,7 @@ export default function AuthModal({ open, onClose, onSuccess }) {
     try {
       const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
       const payload = isLogin ? { ...loginValues.current, turnstile } : { ...registerValues.current, turnstile };
-      const response = await fetch('http://localhost:8000' + endpoint, {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -599,7 +602,7 @@ export default function AuthModal({ open, onClose, onSuccess }) {
     setSuccess(false);
     
     try {
-      const response = await fetch('http://localhost:8000/api/auth/resend-verification', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/resend-verification`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: pendingVerification.username })
