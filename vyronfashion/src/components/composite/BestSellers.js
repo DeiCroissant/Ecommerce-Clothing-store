@@ -9,6 +9,7 @@ import * as productAPI from '@/lib/api/products';
 export default function BestSellers() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [sortOrder, setSortOrder] = useState('desc'); // 'desc' = giảm dần, 'asc' = tăng dần
 
   // Fetch sản phẩm bán chạy từ API
   useEffect(() => {
@@ -17,13 +18,20 @@ export default function BestSellers() {
         setLoading(true);
         // Gọi API với sort = best_sellers để lấy sản phẩm có sold_count cao nhất
         const response = await productAPI.getProducts({
-          sort: 'best_sellers',
+          sort: sortOrder === 'desc' ? 'best_sellers' : 'least_sold',
           limit: 8,
           status: 'active'
         });
         
         console.log('📊 Best sellers loaded:', response.products?.length || 0);
-        setProducts(response.products || []);
+        
+        // Sắp xếp lại nếu cần
+        let sortedProducts = response.products || [];
+        if (sortOrder === 'asc') {
+          sortedProducts = [...sortedProducts].sort((a, b) => (a.sold_count || 0) - (b.sold_count || 0));
+        }
+        
+        setProducts(sortedProducts);
       } catch (error) {
         console.error('Error fetching best sellers:', error);
         setProducts([]);
@@ -33,7 +41,7 @@ export default function BestSellers() {
     };
 
     fetchBestSellers();
-  }, []);
+  }, [sortOrder]);
 
   if (loading) {
     return (
@@ -60,6 +68,20 @@ export default function BestSellers() {
           <p className="text-zinc-600 max-w-2xl mx-auto">
             Những sản phẩm được yêu thích và lựa chọn nhiều nhất bởi khách hàng
           </p>
+          
+          {/* Sort Toggle */}
+          <div className="flex items-center justify-center gap-2 mt-6">
+            <span className="text-sm text-zinc-600">Sắp xếp theo lượt bán:</span>
+            <button
+              onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+              className="px-4 py-2 bg-zinc-900 text-white rounded-full hover:bg-zinc-800 transition-colors text-sm font-medium flex items-center gap-2"
+            >
+              {sortOrder === 'desc' ? '↓ Nhiều nhất' : '↑ Ít nhất'}
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+              </svg>
+            </button>
+          </div>
           
           {/* Trust Badge */}
           <div className="flex items-center justify-center gap-6 mt-6 text-sm text-zinc-600">
@@ -104,9 +126,14 @@ export default function BestSellers() {
             return (
               <div
                 key={product.id}
-                className="animate-fadeInUp"
+                className="animate-fadeInUp relative"
                 style={{ animationDelay: `${index * 0.1}s` }}
               >
+                {/* Badge hiển thị số lượng bán */}
+                <div className="absolute top-2 left-2 z-10 bg-red-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg flex items-center gap-1">
+                  <FireIcon className="w-3 h-3" />
+                  {product.sold_count || 0} đã bán
+                </div>
                 <EnhancedProductCard product={transformedProduct} />
               </div>
             );
@@ -116,7 +143,7 @@ export default function BestSellers() {
         {/* View All Button */}
         <div className="text-center mt-12">
           <Link
-            href="/products?filter=best-sellers"
+            href="/best-sellers"
             className="inline-block px-8 py-3 bg-zinc-900 text-white rounded-full hover:bg-zinc-800 transition-all font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
           >
             Xem Tất Cả Sản Phẩm Bán Chạy

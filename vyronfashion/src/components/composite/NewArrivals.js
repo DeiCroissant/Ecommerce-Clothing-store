@@ -21,7 +21,7 @@ export default function NewArrivals() {
         const response = await productAPI.getProducts({
           status: 'active',
           sort: 'newest',
-          limit: 4, // Only show 4 newest products in carousel
+          limit: 12, // Show 12 newest products in carousel (3 pages of 4 items)
           page: 1
         });
         

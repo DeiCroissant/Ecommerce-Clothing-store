@@ -9,7 +9,6 @@ import HomePageSkeleton from '@/components/ui/HomePageSkeleton';
 
 // Standard Homepage Components
 import HeroBanner from '@/components/layout/HeroBanner';
-import FeaturedCategories from '@/components/composite/FeaturedCategories';
 import NewArrivals from '@/components/composite/NewArrivals';
 import BestSellers from '@/components/composite/BestSellers';
 
@@ -89,11 +88,6 @@ export default function HomePage() {
           <section id="bestsellers" className="py-16 bg-zinc-50">
             <BestSellers />
           </section>
-
-          {/* 6. Featured Categories */}
-          <section id="categories" className="py-16">
-            <FeaturedCategories />
-          </section>
         </main>
       </>
     );
@@ -105,13 +99,10 @@ export default function HomePage() {
       {/* 1. Hero Banner - Banner chính với hình ảnh lớn và CTA */}
       <HeroBanner />
       
-      {/* 2. Featured Categories - Danh mục nổi bật */}
-      <FeaturedCategories />
-      
-      {/* 3. New Arrivals - Sản phẩm mới */}
+      {/* 2. New Arrivals - Sản phẩm mới */}
       <NewArrivals />
       
-      {/* 4. Best Sellers - Sản phẩm bán chạy */}
+      {/* 3. Best Sellers - Sản phẩm bán chạy */}
       <BestSellers />
       
       {/* Footer đã được đặt trong layout.js */}
