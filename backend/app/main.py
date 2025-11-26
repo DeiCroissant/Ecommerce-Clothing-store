@@ -1700,6 +1700,7 @@ async def create_product(product_data: ProductCreate):
                 ]
                 print(f"   Color {idx}: {color.get('name', 'N/A')} - {len(color['images'])} images: {color['images']}")
         
+        now = datetime.now()
         new_product = {
             "name": product_data.name,
             "slug": product_data.slug,
@@ -1716,8 +1717,8 @@ async def create_product(product_data: ProductCreate):
             "rating": product_data.rating.dict(),
             "wishlist_count": 0,
             "sold_count": 0,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat()
+            "created_at": now,  # Lưu datetime object để sort đúng
+            "updated_at": now
         }
         
         print(f"💾 Saving product to DB...")
@@ -1741,8 +1742,8 @@ async def create_product(product_data: ProductCreate):
             rating=product_data.rating,
             wishlist_count=0,
             sold_count=0,
-            created_at=new_product["created_at"],
-            updated_at=new_product["updated_at"]
+            created_at=new_product["created_at"].isoformat(),  # Convert to string for response
+            updated_at=new_product["updated_at"].isoformat()
         )
     except HTTPException:
         raise
