@@ -10,6 +10,11 @@ from typing import Optional, Dict, List, Tuple
 from datetime import datetime
 import hashlib
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from .logger_config import setup_logging
+
+# Setup logger
+logger = setup_logging("cloudinary_uploader")
 
 load_dotenv()
 
@@ -121,35 +126,44 @@ def upload_image(
             "created_at": result.get("created_at")
         }
         
-        print(f"✅ Upload thành công: {public_id}")
-        print(f"   URL: {url[:60]}...")
+        logger.info(f"Upload success: {public_id}")
+        logger.debug(f"URL: {url}")
         
         return url, metadata
         
     except Exception as e:
-        print(f"❌ Lỗi upload Cloudinary: {str(e)}")
+        logger.error(f"Cloudinary upload error: {str(e)}")
         raise Exception(f"Lỗi upload Cloudinary: {str(e)}")
 
 
 def upload_multiple_images(
     files: List[Tuple[bytes, str]],  # List of (content, filename)
     product_slug: Optional[str] = None,
-    color_name: Optional[str] = None
+    color_name: Optional[str] = None,
+    max_workers: int = 5
 ) -> List[Dict]:
     """
-    Upload nhiều ảnh lên Cloudinary
+    Upload nhiều ảnh lên Cloudinary song song (parallel)
     
     Args:
         files: List of (file_content, original_filename)
         product_slug: Slug sản phẩm
         color_name: Tên màu (nếu là ảnh màu)
+        max_workers: Số luồng tối đa để upload đồng thời
     
     Returns:
-        List of {url, metadata}
+        List of {url, metadata, success, error}
     """
+    if not files:
+        return []
+    
+    logger.info(f"Starting parallel upload of {len(files)} images with {max_workers} workers")
+    
     results = []
     
-    for index, (content, filename) in enumerate(files):
+    def upload_single(index_content_filename):
+        """Helper function to upload a single image"""
+        index, content, filename = index_content_filename
         try:
             url, metadata = upload_image(
                 file_content=content,
@@ -158,18 +172,41 @@ def upload_multiple_images(
                 image_index=index,
                 is_main=(index == 0 and not color_name)
             )
-            results.append({
+            return {
                 "success": True,
                 "url": url,
                 "metadata": metadata,
-                "original_filename": filename
-            })
+                "original_filename": filename,
+                "index": index
+            }
         except Exception as e:
-            results.append({
+            logger.warning(f"Failed to upload {filename}: {str(e)}")
+            return {
                 "success": False,
                 "error": str(e),
-                "original_filename": filename
-            })
+                "original_filename": filename,
+                "index": index
+            }
+    
+    # Parallel upload using ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Prepare tasks
+        tasks = [(i, content, filename) for i, (content, filename) in enumerate(files)]
+        
+        # Submit all tasks
+        future_to_task = {executor.submit(upload_single, task): task for task in tasks}
+        
+        # Collect results as they complete
+        for future in as_completed(future_to_task):
+            result = future.result()
+            results.append(result)
+    
+    # Sort by original index to maintain order
+    results.sort(key=lambda x: x.get("index", 999))
+    
+    # Log summary
+    success_count = sum(1 for r in results if r.get("success"))
+    logger.info(f"Upload completed: {success_count}/{len(files)} successful")
     
     return results
 
@@ -189,9 +226,14 @@ def delete_image(public_id: str) -> bool:
     
     try:
         result = cloudinary.uploader.destroy(public_id)
-        return result.get("result") == "ok"
+        success = result.get("result") == "ok"
+        if success:
+            logger.info(f"Deleted image: {public_id}")
+        else:
+            logger.warning(f"Failed to delete image: {public_id}")
+        return success
     except Exception as e:
-        print(f"❌ Lỗi xóa ảnh Cloudinary: {str(e)}")
+        logger.error(f"Error deleting image {public_id}: {str(e)}")
         return False
 
 
@@ -214,13 +256,14 @@ def delete_product_images(product_slug: str) -> Dict:
         result = cloudinary.api.delete_resources_by_prefix(prefix)
         
         deleted_count = len(result.get("deleted", {}))
+        logger.info(f"Deleted {deleted_count} images for product: {product_slug}")
         
         return {
             "deleted": deleted_count,
             "failed": 0
         }
     except Exception as e:
-        print(f"❌ Lỗi xóa ảnh sản phẩm: {str(e)}")
+        logger.error(f"Error deleting product images: {str(e)}")
         return {"deleted": 0, "failed": 0, "error": str(e)}
 
 

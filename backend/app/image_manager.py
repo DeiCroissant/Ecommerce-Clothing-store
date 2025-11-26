@@ -12,6 +12,10 @@ import hashlib
 import re
 from PIL import Image
 import io
+from .logger_config import setup_logging
+
+# Setup logger
+logger = setup_logging("image_manager")
 
 class ImageManager:
     """Class quản lý ảnh sản phẩm"""
@@ -108,13 +112,13 @@ class ImageManager:
         if file_path.exists():
             try:
                 file_path.unlink()
-                print(f"✅ Đã xóa ảnh: {filename}")
+                logger.info(f"Deleted image: {filename}")
                 return True
             except Exception as e:
-                print(f"❌ Lỗi khi xóa ảnh {filename}: {str(e)}")
+                logger.error(f"Error deleting image {filename}: {str(e)}")
                 return False
         else:
-            print(f"⚠️  Ảnh không tồn tại: {filename}")
+            logger.warning(f"Image not found: {filename}")
             return False
     
     def delete_product_images(self, product: dict) -> dict:
@@ -157,7 +161,7 @@ class ImageManager:
         unique_images = list(set(filter(None, images_to_delete)))
         stats['total'] = len(unique_images)
         
-        print(f"\n🗑️  Xóa {stats['total']} ảnh của sản phẩm: {product.get('name', 'N/A')}")
+        logger.info(f"Deleting {stats['total']} images for product: {product.get('name', 'N/A')}")
         
         # Xóa từng ảnh
         for image_url in unique_images:
@@ -166,7 +170,7 @@ class ImageManager:
             else:
                 stats['failed'] += 1
         
-        print(f"📊 Kết quả: {stats['deleted']} thành công, {stats['failed']} thất bại")
+        logger.info(f"Result: {stats['deleted']} success, {stats['failed']} failed")
         
         return stats
     
@@ -241,7 +245,7 @@ class ImageManager:
                     'size': len(file_content)
                 }
             except Exception as e:
-                print(f"⚠️  Không thể optimize ảnh: {str(e)}. Lưu file gốc.")
+                logger.warning(f"Cannot optimize image: {str(e)}. Saving original.")
                 metadata = {'size': len(file_content)}
         else:
             metadata = {'size': len(file_content)}
@@ -253,7 +257,7 @@ class ImageManager:
         # Tạo URL
         url = f"/uploads/products/{new_filename}"
         
-        print(f"💾 Đã lưu ảnh: {new_filename} ({metadata.get('size', 0) / 1024:.1f}KB)")
+        logger.info(f"Saved image: {new_filename} ({metadata.get('size', 0) / 1024:.1f}KB)")
         
         return url, metadata
     
@@ -313,7 +317,7 @@ class ImageManager:
             'freed_space': 0
         }
         
-        print(f"\n🧹 Cleanup: {stats['total_files']} files, {stats['used_files']} đang sử dụng")
+        logger.info(f"Cleanup: {stats['total_files']} files, {stats['used_files']} in use")
         
         # Xóa các file không được sử dụng
         for file_path in all_files:
@@ -323,11 +327,11 @@ class ImageManager:
                     file_path.unlink()
                     stats['deleted'] += 1
                     stats['freed_space'] += file_size
-                    print(f"🗑️  Xóa: {file_path.name} ({file_size / 1024:.1f}KB)")
+                    logger.debug(f"Deleted unused: {file_path.name} ({file_size / 1024:.1f}KB)")
                 except Exception as e:
-                    print(f"❌ Lỗi khi xóa {file_path.name}: {str(e)}")
+                    logger.error(f"Error deleting {file_path.name}: {str(e)}")
         
-        print(f"\n✅ Cleanup hoàn tất: Xóa {stats['deleted']} files, giải phóng {stats['freed_space'] / 1024 / 1024:.2f}MB")
+        logger.info(f"Cleanup complete: Deleted {stats['deleted']} files, freed {stats['freed_space'] / 1024 / 1024:.2f}MB")
         
         return stats
     

@@ -6,6 +6,7 @@ from typing import Optional
 import mimetypes
 from app.database import users_collection, categories_collection, products_collection, reviews_collection, orders_collection, cart_collection, addresses_collection, coupons_collection, returns_collection, settings_collection, close_db
 from app.cloudinary_uploader import upload_image as cloudinary_upload, upload_multiple_images as cloudinary_upload_multiple, delete_product_images as cloudinary_delete_product, is_cloudinary_configured
+from .logger_config import setup_logging
 from app.schemas import (
     UserCreate,
     UserLogin,
@@ -114,11 +115,79 @@ def safe_datetime_to_str(dt):
 import app.payment_vietqr as payment_integration
 import app.schemas as schemas
 
+# Setup logger
+logger = setup_logging("main_api")
+
 app = FastAPI(
     title="Vyron Fashion API",
     description="Backend API cho ứng dụng thời trang",
     version="1.0.0"
 )
+# =====================
+# Khởi động: Tạo indexes tối ưu
+# =====================
+async def create_product_indexes():
+    try:
+        logger.info("Creating product indexes…")
+        # Unique indexes - Handle existing index conflict
+        try:
+            await products_collection.create_index("slug", unique=True, name="idx_unique_slug")
+        except Exception as e:
+            if "IndexOptionsConflict" in str(e) or "already exists" in str(e):
+                logger.info("Index 'slug' already exists, skipping creation.")
+            else:
+                logger.warning(f"Could not create slug index: {e}")
+
+        try:
+            await products_collection.create_index("sku", unique=True, name="idx_unique_sku")
+        except Exception as e:
+             if "IndexOptionsConflict" in str(e) or "already exists" in str(e):
+                logger.info("Index 'sku' already exists, skipping creation.")
+             else:
+                logger.warning(f"Could not create sku index: {e}")
+
+        # Common query indexes
+        await products_collection.create_index([("status", 1)], name="idx_status")
+        await products_collection.create_index([("category.id", 1)], name="idx_category_id")
+        await products_collection.create_index([("updated_at", -1)], name="idx_updated_at_desc")
+
+        # Text search (optional, improves search by name)
+        try:
+            await products_collection.create_index([("name", "text"), ("slug", "text"), ("sku", "text")], name="idx_text_search")
+        except Exception:
+            # Some MongoDB deployments may restrict text index; ignore if fails
+            pass
+
+        logger.info("✅ Product indexes ready")
+    except Exception as e:
+        logger.warning(f"⚠️  Could not create product indexes: {str(e)}")
+
+    # Create category indexes as well
+    try:
+        logger.info("Creating category indexes…")
+        # Unique slug for categories
+        try:
+            await categories_collection.create_index("slug", unique=True, name="idx_cat_unique_slug")
+        except Exception as e:
+            if "IndexOptionsConflict" in str(e) or "already exists" in str(e):
+                logger.info("Category Index 'slug' already exists, skipping creation.")
+            else:
+                logger.warning(f"Could not create category slug index: {e}")
+
+        # Parent, status, updated_at indexes
+        await categories_collection.create_index([("parent_id", 1)], name="idx_cat_parent_id")
+        await categories_collection.create_index([("status", 1)], name="idx_cat_status")
+        await categories_collection.create_index([("updated_at", -1)], name="idx_cat_updated_at_desc")
+
+        # Optional text index for name
+        try:
+            await categories_collection.create_index([("name", "text"), ("slug", "text")], name="idx_cat_text_search")
+        except Exception:
+            pass
+
+        logger.info("✅ Category indexes ready")
+    except Exception as e:
+        logger.warning(f"⚠️  Could not create category indexes: {str(e)}")
 
 # Get frontend URL from environment
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
@@ -140,21 +209,16 @@ async def startup_event():
     try:
         print("🚀 Creating database indexes...")
         
-        # Products collection indexes
-        await products_collection.create_index("slug", unique=True)
-        await products_collection.create_index("category.slug")
-        await products_collection.create_index("status")
-        await products_collection.create_index([("created_at", -1)])
-        await products_collection.create_index([("wishlist_count", -1)])
-        await products_collection.create_index([("pricing.sale", 1)])
-        await products_collection.create_index([("pricing.sale", -1)])
-        
-        # Categories collection indexes
-        await categories_collection.create_index("slug", unique=True)
+        # Use the robust index creation function for products and categories
+        await create_product_indexes()
         
         # Orders collection indexes
         await orders_collection.create_index("user_id")
         await orders_collection.create_index([("created_at", -1)])
+        await orders_collection.create_index("status")
+        await orders_collection.create_index("order_number")
+        await orders_collection.create_index("shipping_address.phone")
+        await orders_collection.create_index([("status", 1), ("created_at", -1)])
         
         # Reviews collection indexes
         await reviews_collection.create_index("product_id")
@@ -1478,8 +1542,7 @@ async def upload_multiple_images(
         {urls: ["url1", "url2"], errors: []}
     """
     try:
-        print(f"\n📤 Upload request: {len(files)} file(s) to Cloudinary")
-        print(f"   Product slug: {product_slug}, Color: {color_name}")
+        logger.info(f"Upload request: {len(files)} file(s), slug: {product_slug}, color: {color_name}")
         
         if not is_cloudinary_configured():
             raise HTTPException(
@@ -1487,59 +1550,50 @@ async def upload_multiple_images(
                 detail="Cloudinary chưa được cấu hình. Kiểm tra CLOUDINARY_* trong .env"
             )
         
-        urls = []
+        # Prepare files for parallel upload
+        prepared_files = []
         errors = []
         
         for idx, file in enumerate(files):
             try:
-                print(f"  📸 File {idx+1}: {file.filename}")
-                print(f"     Content-Type: {file.content_type}")
-                
-                # Validate content type
                 if not file.content_type or not file.content_type.startswith('image/'):
                     error_msg = f"File không phải là ảnh (content-type: {file.content_type})"
-                    print(f"  ❌ {error_msg}")
+                    logger.warning(error_msg)
                     errors.append({
                         "filename": file.filename,
                         "error": error_msg
                     })
                     continue
-                
-                # Read file
-                file_content = await file.read()
-                file_size_mb = len(file_content) / (1024 * 1024)
-                print(f"     Size: {file_size_mb:.2f}MB")
-                
+                content = await file.read()
+                file_size_mb = len(content) / (1024 * 1024)
                 if file_size_mb > 10:
                     error_msg = f"File quá lớn ({file_size_mb:.2f}MB). Tối đa 10MB"
-                    print(f"  ❌ {error_msg}")
+                    logger.warning(error_msg)
                     errors.append({
                         "filename": file.filename,
                         "error": error_msg
                     })
                     continue
-                
-                print(f"     ☁️ Uploading to Cloudinary...")
-                url, metadata = cloudinary_upload(
-                    file_content=file_content,
-                    product_slug=product_slug,
-                    color_name=color_name,
-                    image_index=idx,
-                    is_main=(idx == 0 and not color_name)
-                )
-                
-                urls.append(url)
-                print(f"  ✅ Uploaded: {url[:60]}...")
-                
+                prepared_files.append((content, file.filename))
             except Exception as e:
-                error_msg = f"Lỗi khi upload: {str(e)}"
-                print(f"  ❌ {error_msg}")
+                logger.error(f"Lỗi đọc file: {file.filename} - {str(e)}")
                 errors.append({
                     "filename": file.filename,
-                    "error": error_msg
+                    "error": f"Lỗi đọc file: {str(e)}"
                 })
         
-        print(f"\n✅ Upload complete: {len(urls)}/{len(files)} success\n")
+        # Parallel upload using cloudinary_uploader
+        upload_results = cloudinary_upload_multiple(
+            files=prepared_files,
+            product_slug=product_slug,
+            color_name=color_name
+        )
+        urls = [r["url"] for r in upload_results if r.get("success")]
+        failed = [r for r in upload_results if not r.get("success")]
+        for f in failed:
+            errors.append({"filename": f.get("original_filename"), "error": f.get("error")})
+        
+        logger.info(f"Upload complete: {len(urls)}/{len(prepared_files)} success")
         
         return {
             "success": True,
@@ -1674,9 +1728,7 @@ async def get_product(product_id: str = Path(...)):
 async def create_product(product_data: ProductCreate):
     """Tạo sản phẩm mới"""
     try:
-        print(f"\n📝 Creating product: {product_data.name}")
-        print(f"   SKU: {product_data.sku}")
-        print(f"   Slug: {product_data.slug}")
+        logger.info(f"Creating product: {product_data.name} (SKU: {product_data.sku}, Slug: {product_data.slug})")
         
         # Kiểm tra slug đã tồn tại chưa
         existing = await products_collection.find_one({"slug": product_data.slug})
@@ -1697,8 +1749,7 @@ async def create_product(product_data: ProductCreate):
         # Convert and validate variants
         variants_dict = product_data.variants.dict()
         
-        print(f"📦 Variants data received:")
-        print(f"   Raw variants: {variants_dict}")
+        logger.debug(f"Processing variants data for {product_data.name}")
         
         # Ensure each color has images field
         if 'colors' in variants_dict:
@@ -1710,7 +1761,7 @@ async def create_product(product_data: ProductCreate):
                     img for img in color.get('images', [])
                     if img and isinstance(img, str) and not img.startswith('blob:')
                 ]
-                print(f"   Color {idx}: {color.get('name', 'N/A')} - {len(color['images'])} images: {color['images']}")
+                logger.debug(f"Color {idx}: {color.get('name', 'N/A')} - {len(color['images'])} images")
         
         now = datetime.now()
         new_product = {
@@ -1733,9 +1784,9 @@ async def create_product(product_data: ProductCreate):
             "updated_at": now
         }
         
-        print(f"💾 Saving product to DB...")
+        logger.debug(f"Saving product {product_data.name} to DB...")
         result = await products_collection.insert_one(new_product)
-        print(f"✅ Product saved with ID: {result.inserted_id}\n")
+        logger.info(f"Product saved with ID: {result.inserted_id}")
         
         return ProductResponse(
             id=str(result.inserted_id),
@@ -2023,6 +2074,10 @@ async def get_storage_statistics():
 
 # ==================== WISHLIST API ENDPOINTS ====================
 
+# Cache for wishlist to reduce DB load
+wishlist_cache = {}
+WISHLIST_CACHE_DURATION = 300  # 5 minutes
+
 @app.post("/api/wishlist/toggle", response_model=WishlistToggleResponse)
 async def toggle_wishlist(
     product_id: str = Query(..., description="ID sản phẩm"),
@@ -2080,6 +2135,10 @@ async def toggle_wishlist(
             {"$set": {"wishlist": wishlist}}
         )
         
+        # Invalidate cache
+        if user_id in wishlist_cache:
+            del wishlist_cache[user_id]
+        
         return WishlistToggleResponse(
             success=True,
             message=message,
@@ -2098,6 +2157,17 @@ async def toggle_wishlist(
 async def get_wishlist(user_id: str = Path(...)):
     """Lấy danh sách wishlist của user"""
     try:
+        # Validate user_id
+        if not ObjectId.is_valid(user_id):
+            raise HTTPException(status_code=400, detail="Invalid User ID")
+
+        # Check cache
+        if user_id in wishlist_cache:
+            entry = wishlist_cache[user_id]
+            age = (datetime.now() - entry["timestamp"]).total_seconds()
+            if age < WISHLIST_CACHE_DURATION:
+                return entry["data"]
+
         user = await users_collection.find_one({"_id": ObjectId(user_id)})
         if not user:
             raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
@@ -2119,12 +2189,17 @@ async def get_wishlist(user_id: str = Path(...)):
                     "added_at": datetime.now().isoformat()
                 })
         
-        return WishlistResponse(
+        response = WishlistResponse(
             success=True,
             user_id=user_id,
             wishlist=wishlist_items,
             total=len(wishlist_items)
         )
+        
+        # Set cache
+        wishlist_cache[user_id] = {"data": response, "timestamp": datetime.now()}
+        
+        return response
     except HTTPException:
         raise
     except Exception as e:
@@ -2137,6 +2212,9 @@ async def get_wishlist(user_id: str = Path(...)):
 async def get_wishlist_products(user_id: str = Path(...)):
     """Lấy danh sách sản phẩm trong wishlist của user"""
     try:
+        if not ObjectId.is_valid(user_id):
+            raise HTTPException(status_code=400, detail="Invalid User ID")
+
         user = await users_collection.find_one({"_id": ObjectId(user_id)})
         if not user:
             raise HTTPException(status_code=404, detail="Không tìm thấy người dùng")
@@ -2579,6 +2657,9 @@ async def casso_webhook(request: Request):
             }}
         )
         
+        # Clear admin cache so admin sees the update immediately
+        admin_orders_cache["data"] = None
+        
         msg = f"Đã cập nhật thanh toán cho order {order_id}"
         print(f"✅ {msg}")
         results.append({
@@ -2898,6 +2979,9 @@ async def update_order_status(
             {"_id": ObjectId(order_id)},
             {"$set": update_data}
         )
+        
+        # Clear admin cache to reflect changes immediately
+        admin_orders_cache["data"] = None
         
         # Get updated order
         updated_order = await orders_collection.find_one({"_id": ObjectId(order_id)})
