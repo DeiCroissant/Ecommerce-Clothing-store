@@ -6,6 +6,7 @@ from typing import Optional
 import mimetypes
 from app.database import users_collection, categories_collection, products_collection, reviews_collection, orders_collection, cart_collection, addresses_collection, coupons_collection, returns_collection, settings_collection, close_db
 from app.cloudinary_uploader import upload_image as cloudinary_upload, upload_multiple_images as cloudinary_upload_multiple, delete_product_images as cloudinary_delete_product, is_cloudinary_configured
+from app.recommendation import recommender  # Content-Based Filtering
 from .logger_config import setup_logging
 from app.schemas import (
     UserCreate,
@@ -225,6 +226,19 @@ async def startup_event():
         await reviews_collection.create_index("user_id")
         
         print("✅ Database indexes created successfully")
+        
+        # Load recommendation model
+        print("🧠 Loading recommendation model...")
+        products = await products_collection.find({}).to_list(length=None)
+        if products:
+            success = await recommender.fit(products)
+            if success:
+                print(f"✅ Recommendation model loaded with {len(recommender.product_ids)} products")
+            else:
+                print("⚠️ Not enough products for recommendations")
+        else:
+            print("⚠️ No products found for recommendation model")
+            
     except Exception as e:
         print(f"⚠️ Error creating indexes: {str(e)}")
 
@@ -1724,6 +1738,92 @@ async def get_product(product_id: str = Path(...)):
             detail=f"Lỗi server: {str(e)}"
         )
 
+
+# ==================== PRODUCT RECOMMENDATIONS ====================
+
+@app.get("/api/products/{product_id}/recommendations")
+async def get_product_recommendations(
+    product_id: str = Path(..., description="ID sản phẩm"),
+    limit: int = Query(8, ge=1, le=20, description="Số lượng sản phẩm gợi ý")
+):
+    """
+    Lấy danh sách sản phẩm tương tự (Content-Based Filtering)
+    Sử dụng TF-IDF + Cosine Similarity
+    """
+    try:
+        # Kiểm tra product tồn tại
+        product = await products_collection.find_one({"_id": ObjectId(product_id)})
+        if not product:
+            raise HTTPException(status_code=404, detail="Không tìm thấy sản phẩm")
+        
+        # Nếu recommender chưa được train, train lại
+        if not recommender.is_fitted:
+            print("🔄 Recommender not fitted, retraining...")
+            products = await products_collection.find({}).to_list(length=None)
+            await recommender.fit(products)
+        
+        # Lấy recommendations
+        recommendations = recommender.get_recommendations(product_id, n=limit)
+        
+        return {
+            "product_id": product_id,
+            "product_name": product.get("name", ""),
+            "recommendations": recommendations,
+            "total": len(recommendations),
+            "model_stats": recommender.get_stats()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting recommendations: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+
+@app.post("/api/recommendations/rebuild")
+async def rebuild_recommendation_model():
+    """
+    Rebuild recommendation model (Admin only)
+    Gọi khi cần refresh model sau nhiều thay đổi sản phẩm
+    """
+    try:
+        print("🔄 Rebuilding recommendation model...")
+        products = await products_collection.find({}).to_list(length=None)
+        
+        if not products:
+            return {"success": False, "message": "Không có sản phẩm nào"}
+        
+        success = await recommender.fit(products)
+        
+        if success:
+            return {
+                "success": True,
+                "message": "Model đã được rebuild thành công",
+                "stats": recommender.get_stats()
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Không đủ sản phẩm để train model"
+            }
+            
+    except Exception as e:
+        logger.error(f"Error rebuilding model: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+
+@app.get("/api/recommendations/stats")
+async def get_recommendation_stats():
+    """Lấy thống kê về recommendation model"""
+    return recommender.get_stats()
+
+
 @app.post("/api/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
 async def create_product(product_data: ProductCreate):
     """Tạo sản phẩm mới"""
@@ -1804,6 +1904,9 @@ async def create_product(product_data: ProductCreate):
         
         # Clear product cache
         admin_products_cache["data"] = None
+        
+        # Mark recommender for rebuild
+        recommender.mark_dirty()
         
         return ProductResponse(
             id=str(result.inserted_id),
@@ -1920,6 +2023,9 @@ async def update_product(product_id: str = Path(...), product_data: ProductUpdat
         # Clear product cache
         admin_products_cache["data"] = None
         
+        # Mark recommender for rebuild
+        recommender.mark_dirty()
+        
         return ProductResponse(
             id=str(updated["_id"]),
             name=updated["name"],
@@ -1980,6 +2086,9 @@ async def delete_product(product_id: str = Path(...)):
         
         # Clear product cache
         admin_products_cache["data"] = None
+        
+        # Mark recommender for rebuild
+        recommender.mark_dirty()
         
         product_response = ProductResponse(
             id=str(product["_id"]),

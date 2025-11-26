@@ -17,6 +17,7 @@ import * as reviewAPI from '@/lib/api/reviews';
 import * as cartAPI from '@/lib/api/cart';
 import * as wishlistAPI from '@/lib/api/wishlist';
 import ProductReviews from '@/components/product/ProductReviews';
+import SimilarProducts from '@/components/product/SimilarProducts';
 import { getImageUrl } from '@/lib/imageHelper';
 
 // Mock data - sẽ thay thế bằng API call sau
@@ -667,15 +668,13 @@ export default function ProductDetailPage({ params }) {
         </div>
       </div>
 
-      {/* Related Products Section - Placeholder */}
+      {/* Similar Products Section - AI Powered */}
       <div className="container mx-auto px-4 py-12">
         <div className="max-w-6xl mx-auto">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">
-            Sản phẩm tương tự
-          </h2>
-          <div className="bg-gray-100 rounded-lg p-8 text-center text-gray-500">
-            <p>Gợi ý sản phẩm sẽ được phát triển trong phase tiếp theo</p>
-          </div>
+          <SimilarProducts 
+            productId={product.id} 
+            productName={product.name}
+          />
         </div>
       </div>
 

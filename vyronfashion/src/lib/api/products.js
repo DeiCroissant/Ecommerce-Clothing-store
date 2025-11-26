@@ -195,3 +195,33 @@ export async function getProductBySlug(slug) {
   }
 }
 
+/**
+ * Lấy sản phẩm gợi ý tương tự (Content-Based Filtering)
+ * @param {string} productId - ID sản phẩm
+ * @param {number} limit - Số lượng sản phẩm gợi ý (default: 8)
+ * @returns {Promise<Object>} - Danh sách sản phẩm tương tự
+ */
+export async function getProductRecommendations(productId, limit = 8) {
+  try {
+    const url = `${API_BASE_URL}/api/products/${productId}/recommendations?limit=${limit}`
+    console.log('🧠 Fetching recommendations for product:', productId)
+    
+    const response = await fetch(url)
+    
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.warn('Product not found for recommendations')
+        return { recommendations: [], total: 0 }
+      }
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    console.log('✅ Recommendations response:', data)
+    return data
+  } catch (error) {
+    console.error('❌ Error fetching recommendations:', error)
+    return { recommendations: [], total: 0 }
+  }
+}
+
