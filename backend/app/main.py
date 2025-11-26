@@ -1788,6 +1788,9 @@ async def create_product(product_data: ProductCreate):
         result = await products_collection.insert_one(new_product)
         logger.info(f"Product saved with ID: {result.inserted_id}")
         
+        # Clear product cache
+        admin_products_cache["data"] = None
+        
         return ProductResponse(
             id=str(result.inserted_id),
             name=new_product["name"],
@@ -1881,6 +1884,9 @@ async def update_product(product_id: str = Path(...), product_data: ProductUpdat
         
         updated = await products_collection.find_one({"_id": ObjectId(product_id)})
         
+        # Clear product cache
+        admin_products_cache["data"] = None
+        
         return ProductResponse(
             id=str(updated["_id"]),
             name=updated["name"],
@@ -1938,6 +1944,9 @@ async def delete_product(product_id: str = Path(...)):
         
         # Xóa sản phẩm khỏi database
         await products_collection.delete_one({"_id": ObjectId(product_id)})
+        
+        # Clear product cache
+        admin_products_cache["data"] = None
         
         product_response = ProductResponse(
             id=str(product["_id"]),
