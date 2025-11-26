@@ -1751,17 +1751,31 @@ async def create_product(product_data: ProductCreate):
         
         logger.debug(f"Processing variants data for {product_data.name}")
         
-        # Ensure each color has images field
+        # Ensure each color has images field and remove duplicates
         if 'colors' in variants_dict:
             for idx, color in enumerate(variants_dict['colors']):
                 if 'images' not in color:
                     color['images'] = []
-                # Filter out blob URLs
-                color['images'] = [
-                    img for img in color.get('images', [])
-                    if img and isinstance(img, str) and not img.startswith('blob:')
-                ]
+                # Filter out blob URLs and remove duplicates
+                seen = set()
+                unique_images = []
+                for img in color.get('images', []):
+                    if img and isinstance(img, str) and not img.startswith('blob:') and img not in seen:
+                        seen.add(img)
+                        unique_images.append(img)
+                color['images'] = unique_images
                 logger.debug(f"Color {idx}: {color.get('name', 'N/A')} - {len(color['images'])} images")
+        
+        # Remove duplicates from main images array
+        if product_data.images:
+            seen = set()
+            unique_main_images = []
+            for img in product_data.images:
+                if img and isinstance(img, str) and not img.startswith('blob:') and img not in seen:
+                    seen.add(img)
+                    unique_main_images.append(img)
+        else:
+            unique_main_images = []
         
         now = datetime.now()
         new_product = {
@@ -1773,7 +1787,7 @@ async def create_product(product_data: ProductCreate):
             "pricing": product_data.pricing.dict(),
             "short_description": product_data.short_description,
             "image": product_data.image,
-            "images": product_data.images,
+            "images": unique_main_images,
             "variants": variants_dict,
             "inventory": product_data.inventory.dict(),
             "status": product_data.status,
@@ -1865,9 +1879,28 @@ async def update_product(product_id: str = Path(...), product_data: ProductUpdat
         if product_data.image is not None:
             update_data["image"] = product_data.image
         if product_data.images is not None:
-            update_data["images"] = product_data.images
+            # Remove duplicates and blob URLs from images
+            seen = set()
+            unique_images = []
+            for img in product_data.images:
+                if img and isinstance(img, str) and not img.startswith('blob:') and img not in seen:
+                    seen.add(img)
+                    unique_images.append(img)
+            update_data["images"] = unique_images
         if product_data.variants is not None:
-            update_data["variants"] = product_data.variants.dict()
+            variants_dict = product_data.variants.dict()
+            # Remove duplicates from color images
+            if 'colors' in variants_dict:
+                for color in variants_dict['colors']:
+                    if 'images' in color:
+                        seen = set()
+                        unique_color_images = []
+                        for img in color.get('images', []):
+                            if img and isinstance(img, str) and not img.startswith('blob:') and img not in seen:
+                                seen.add(img)
+                                unique_color_images.append(img)
+                        color['images'] = unique_color_images
+            update_data["variants"] = variants_dict
         if product_data.inventory is not None:
             update_data["inventory"] = product_data.inventory.dict()
         if product_data.status is not None:
@@ -2043,6 +2076,76 @@ async def cleanup_images_endpoint():
             "note": "Images are stored on Cloudinary CDN"
         }
     }
+
+
+@app.post("/api/admin/products/cleanup-duplicates")
+async def cleanup_duplicate_images():
+    """
+    Xóa ảnh trùng lặp trong tất cả sản phẩm
+    """
+    try:
+        products = await products_collection.find({}).to_list(length=None)
+        fixed_count = 0
+        
+        for product in products:
+            needs_update = False
+            update_data = {}
+            
+            # Cleanup images array
+            images = product.get("images", [])
+            if images:
+                seen = set()
+                unique_images = []
+                for img in images:
+                    if img and img not in seen:
+                        seen.add(img)
+                        unique_images.append(img)
+                if len(unique_images) != len(images):
+                    update_data["images"] = unique_images
+                    needs_update = True
+            
+            # Cleanup color images
+            variants = product.get("variants", {})
+            colors = variants.get("colors", [])
+            if colors:
+                new_colors = []
+                for color in colors:
+                    color_images = color.get("images", [])
+                    if color_images:
+                        seen = set()
+                        unique_color_images = []
+                        for img in color_images:
+                            if img and img not in seen:
+                                seen.add(img)
+                                unique_color_images.append(img)
+                        if len(unique_color_images) != len(color_images):
+                            color["images"] = unique_color_images
+                            needs_update = True
+                    new_colors.append(color)
+                
+                if needs_update:
+                    update_data["variants"] = {**variants, "colors": new_colors}
+            
+            if needs_update:
+                await products_collection.update_one(
+                    {"_id": product["_id"]},
+                    {"$set": update_data}
+                )
+                fixed_count += 1
+        
+        # Clear cache
+        admin_products_cache["data"] = None
+        
+        return {
+            "success": True,
+            "message": f"Đã sửa {fixed_count} sản phẩm có ảnh trùng lặp",
+            "fixed_count": fixed_count
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi: {str(e)}"
+        )
 
 
 @app.get("/api/products/storage-stats")

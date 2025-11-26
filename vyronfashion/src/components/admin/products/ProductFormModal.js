@@ -429,8 +429,10 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
         
         const result = await response.json()
         if (result.urls && result.urls.length > 0) {
-          // Merge với ảnh gallery đã có (nếu edit sản phẩm cũ)
-          finalFormData.images = [...(finalFormData.images || []), ...result.urls]
+          // Get existing REAL images (filter out blob URLs) and remove duplicates
+          const existingImages = (finalFormData.images || [])
+            .filter(img => img && typeof img === 'string' && !img.startsWith('blob:'))
+          finalFormData.images = [...new Set([...existingImages, ...result.urls])]
         }
       }
       
@@ -460,14 +462,14 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
             const result = await response.json()
             console.log(`   Color ${index} upload result:`, result)
             if (result.urls && result.urls.length > 0) {
-              // Merge với ảnh màu đã có
-              if (!finalFormData.variants.colors[index].images) {
-                finalFormData.variants.colors[index].images = []
-              }
-              finalFormData.variants.colors[index].images = [
-                ...finalFormData.variants.colors[index].images,
-                ...result.urls
-              ]
+              // Get existing REAL images (filter out blob URLs)
+              const existingImages = (finalFormData.variants.colors[index].images || [])
+                .filter(img => img && typeof img === 'string' && !img.startsWith('blob:'))
+              
+              // Remove duplicates by using Set
+              const allImages = [...new Set([...existingImages, ...result.urls])]
+              
+              finalFormData.variants.colors[index].images = allImages
               console.log(`   Color ${index} final images:`, finalFormData.variants.colors[index].images)
             }
           }
@@ -476,7 +478,32 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
       
       console.log('📦 Final form data before save:', JSON.stringify(finalFormData.variants, null, 2))
       
-      // 4. Cleanup blob URLs và clear pending states SAU KHI upload thành công
+      // 4. Final cleanup: Remove all blob URLs and duplicates from all image arrays
+      // Clean main images array
+      if (finalFormData.images) {
+        const seen = new Set()
+        finalFormData.images = finalFormData.images.filter(img => {
+          if (!img || typeof img !== 'string' || img.startsWith('blob:') || seen.has(img)) return false
+          seen.add(img)
+          return true
+        })
+      }
+      
+      // Clean color images arrays
+      if (finalFormData.variants?.colors) {
+        finalFormData.variants.colors.forEach(color => {
+          if (color.images) {
+            const seen = new Set()
+            color.images = color.images.filter(img => {
+              if (!img || typeof img !== 'string' || img.startsWith('blob:') || seen.has(img)) return false
+              seen.add(img)
+              return true
+            })
+          }
+        })
+      }
+      
+      // 5. Cleanup blob URLs và clear pending states SAU KHI upload thành công
       if (pendingMainImage) {
         URL.revokeObjectURL(pendingMainImage.preview)
         setPendingMainImage(null)
@@ -489,10 +516,10 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
       })
       setPendingColorImages({})
       
-      // 5. Update formData với URLs đã upload (để tránh duplicate nếu onSave fail)
+      // 6. Update formData với URLs đã upload (để tránh duplicate nếu onSave fail)
       setFormData(finalFormData)
       
-      // 6. Gọi onSave với dữ liệu đã upload
+      // 7. Gọi onSave với dữ liệu đã upload
       onSave(finalFormData)
       
     } catch (error) {
