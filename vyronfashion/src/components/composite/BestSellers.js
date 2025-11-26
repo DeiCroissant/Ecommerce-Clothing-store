@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import EnhancedProductCard from '@/components/category/EnhancedProductCard';
 import { FireIcon } from '@heroicons/react/24/solid';
 import * as productAPI from '@/lib/api/products';
@@ -114,12 +115,12 @@ export default function BestSellers() {
 
         {/* View All Button */}
         <div className="text-center mt-12">
-          <a
+          <Link
             href="/products?filter=best-sellers"
             className="inline-block px-8 py-3 bg-zinc-900 text-white rounded-full hover:bg-zinc-800 transition-all font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
           >
             Xem Tất Cả Sản Phẩm Bán Chạy
-          </a>
+          </Link>
         </div>
       </div>
     </section>

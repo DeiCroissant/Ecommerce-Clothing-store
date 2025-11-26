@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Star, MessageSquare, Send, CheckCircle2 } from 'lucide-react'
 import * as reviewAPI from '@/lib/api/reviews'
-import Image from 'next/image'
+import { getImageUrl, handleImageError } from '@/lib/imageHelper'
 
 function getCurrentUserId() {
   if (typeof window === 'undefined') return null;
@@ -234,20 +234,12 @@ export function OrderReviewSection({ order }) {
           <div key={item.id || item.product_id} className="bg-white rounded-xl border border-zinc-200 p-5">
             <div className="flex items-start gap-4 mb-4">
               <div className="w-16 h-16 rounded-lg overflow-hidden bg-zinc-100 flex-shrink-0">
-                {item.image ? (
-                  <Image
-                    src={item.image}
-                    alt={item.name}
-                    width={64}
-                    height={64}
-                    className="w-full h-full object-cover"
-                    unoptimized={item.image.startsWith('data:image/')}
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <MessageSquare size={24} className="text-zinc-400" />
-                  </div>
-                )}
+                <img
+                  src={getImageUrl(item.image || item.product_image || '/images/placeholders/product-placeholder.svg')}
+                  alt={item.name}
+                  className="w-full h-full object-cover"
+                  onError={handleImageError}
+                />
               </div>
               <div className="flex-1 min-w-0">
                 <h4 className="font-semibold text-zinc-900 mb-1">{item.name}</h4>

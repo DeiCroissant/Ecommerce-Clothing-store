@@ -126,18 +126,33 @@ export async function updateProduct(productId, productData) {
  */
 export async function deleteProduct(productId) {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/products/${productId}`, {
+    console.log('🗑️ Deleting product with ID:', productId, 'Type:', typeof productId)
+    const url = `${API_BASE_URL}/api/products/${productId}`
+    console.log('🗑️ DELETE URL:', url)
+    
+    const response = await fetch(url, {
       method: 'DELETE',
     })
     
+    console.log('🗑️ Delete response status:', response.status)
+    
     if (!response.ok) {
-      const error = await response.json()
+      const errorText = await response.text()
+      console.error('🗑️ Delete error response:', errorText)
+      let error
+      try {
+        error = JSON.parse(errorText)
+      } catch {
+        error = { detail: errorText }
+      }
       throw new Error(error.detail || 'Failed to delete product')
     }
     
-    return await response.json()
+    const result = await response.json()
+    console.log('✅ Delete successful:', result)
+    return result
   } catch (error) {
-    console.error('Error deleting product:', error)
+    console.error('❌ Error deleting product:', error)
     throw error
   }
 }

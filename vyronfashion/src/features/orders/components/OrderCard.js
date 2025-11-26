@@ -1,10 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
 import { Package, ArrowRight, Calendar } from 'lucide-react'
 import { format } from 'date-fns'
 import { vi } from 'date-fns/locale'
+import { getImageUrl, handleImageError } from '@/lib/imageHelper'
 
 const statusConfig = {
   pending: {
@@ -97,7 +97,7 @@ export function OrderCard({ order }) {
 
       <div className="order-items">
         {orderItems.slice(0, 3).map((item, index) => {
-          const itemImage = item.image || item.product_image || '/images/placeholders/product-placeholder.svg'
+          const itemImage = getImageUrl(item.image || item.product_image || '/images/placeholders/product-placeholder.svg')
           const itemName = item.name || item.product_name || 'Sản phẩm'
           const itemQuantity = item.quantity || 1
           
@@ -113,23 +113,13 @@ export function OrderCard({ order }) {
           return (
             <div key={item.id || item.product_id || index} className="order-item">
               <div className="item-image-wrapper">
-                {itemImage.startsWith('data:image/') || itemImage.startsWith('http') || itemImage.startsWith('/') ? (
-                  <Image
-                    src={itemImage}
-                    alt={itemName}
-                    width={60}
-                    height={60}
-                    className="item-image"
-                    unoptimized={itemImage.startsWith('data:image/')}
-                  />
-                ) : (
-                  <img
-                    src={itemImage}
-                    alt={itemName}
-                    className="item-image"
-                    style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '0.5rem' }}
-                  />
-                )}
+                <img
+                  src={itemImage}
+                  alt={itemName}
+                  className="item-image"
+                  style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '0.5rem' }}
+                  onError={handleImageError}
+                />
               </div>
               <div className="item-info">
                 <p className="item-name">{itemName}</p>

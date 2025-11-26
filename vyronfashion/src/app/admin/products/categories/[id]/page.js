@@ -63,11 +63,26 @@ export default function CategoryDetailPage() {
         try {
           const subCat = subCategories.find(c => c.id === selectedSubCategoryId)
       if (subCat) {
+            console.log('🔍 Loading products for subcategory:', subCat.slug)
             const response = await productAPI.getProducts({
               category_slug: subCat.slug,
               status: 'active'
             })
-            setProducts(response.products || [])
+            console.log('📦 Products response:', response)
+            console.log('📦 Products type:', typeof response, Array.isArray(response))
+            
+            // Handle different response formats
+            let productsArray = []
+            if (Array.isArray(response)) {
+              productsArray = response
+            } else if (response?.products && Array.isArray(response.products)) {
+              productsArray = response.products
+            } else if (response?.data && Array.isArray(response.data)) {
+              productsArray = response.data
+            }
+            
+            console.log('✅ Setting products array:', productsArray.length, 'items')
+            setProducts(productsArray)
       }
         } catch (error) {
           console.error('Error loading products:', error)
@@ -135,11 +150,33 @@ export default function CategoryDetailPage() {
           }));
         }
       } else if (deleteType === 'product') {
+        console.log('🗑️ Deleting product:', deleteTargetId)
         await productAPI.deleteProduct(deleteTargetId)
         
-        // Reload products
-        const productsData = await productAPI.getProductsByCategory(selectedSubCategoryId)
-        setProducts(productsData || [])
+        // Reload products using same logic as useEffect
+        if (selectedSubCategoryId) {
+          const subCat = subCategories.find(c => c.id === selectedSubCategoryId)
+          if (subCat) {
+            console.log('🔄 Reloading products for:', subCat.slug)
+            const response = await productAPI.getProducts({
+              category_slug: subCat.slug,
+              status: 'active'
+            })
+            
+            // Handle different response formats
+            let productsArray = []
+            if (Array.isArray(response)) {
+              productsArray = response
+            } else if (response?.products && Array.isArray(response.products)) {
+              productsArray = response.products
+            } else if (response?.data && Array.isArray(response.data)) {
+              productsArray = response.data
+            }
+            
+            console.log('✅ Reloaded products:', productsArray.length, 'items')
+            setProducts(productsArray)
+          }
+        }
         
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('showToast', { 
@@ -329,7 +366,7 @@ export default function CategoryDetailPage() {
               <div>
                 <h2 className="admin-card-title">Danh mục con</h2>
                 <p className="admin-card-description">
-                  Quản lý danh mục con của "{category.name}"
+                  Quản lý danh mục con của &quot;{category.name}&quot;
                 </p>
               </div>
               <button
@@ -459,7 +496,7 @@ export default function CategoryDetailPage() {
             <div className="admin-card-header">
               <div>
                 <h2 className="admin-card-title">
-                  Sản phẩm trong "{subCategories.find(c => c.id === selectedSubCategoryId)?.name || ''}"
+                  Sản phẩm trong &quot;{subCategories.find(c => c.id === selectedSubCategoryId)?.name || ''}&quot;
                 </h2>
                 <p className="admin-card-description">
                   {products.length} sản phẩm

@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { HeartIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { formatCurrency } from '@/lib/formatCurrency';
+import { getProductImage, handleImageError } from '@/lib/imageHelper';
 
 /**
  * EmptyResults Component
@@ -85,7 +86,6 @@ export default function EmptyResults({
                 // Hỗ trợ cả format cũ (price, originalPrice) và format mới (pricing.sale, pricing.original)
                 const price = product.pricing?.sale || product.pricing?.original || product.price || 0
                 const originalPrice = product.pricing?.original && product.pricing?.sale ? product.pricing.original : product.originalPrice
-                const image = product.image || product.images?.[0] || ''
                 
                 return (
                   <Link
@@ -96,8 +96,9 @@ export default function EmptyResults({
                     {/* Product Image */}
                     <div className="aspect-[3/4] bg-gray-100 overflow-hidden">
                       <img
-                        src={image}
+                        src={getProductImage(product)}
                         alt={product.name}
+                        onError={handleImageError}
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                       />
                     </div>

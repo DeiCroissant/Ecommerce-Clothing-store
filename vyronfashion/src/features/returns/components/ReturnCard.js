@@ -1,10 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
 import { PackageX, ArrowRight, Calendar, FileText } from 'lucide-react'
 import { format } from 'date-fns'
 import { vi } from 'date-fns/locale'
+import { getImageUrl, handleImageError } from '@/lib/imageHelper'
 
 const statusConfig = {
   pending: {
@@ -78,30 +78,20 @@ export function ReturnCard({ returnItem }) {
       {returnProducts.length > 0 && (
         <div className="return-products">
           {returnProducts.slice(0, 3).map((product, index) => {
-            const productImage = product.image || product.product_image || '/images/placeholders/product-placeholder.svg'
+            const productImage = getImageUrl(product.image || product.product_image)
             const productName = product.name || product.product_name || 'Sản phẩm'
             const productQuantity = product.quantity || 1
             
             return (
               <div key={product.id || index} className="return-product">
                 <div className="product-image-wrapper">
-                  {productImage.startsWith('data:image/') || productImage.startsWith('http') || productImage.startsWith('/') ? (
-                    <Image
-                      src={productImage}
-                      alt={productName}
-                      width={60}
-                      height={60}
-                      className="product-image"
-                      unoptimized={productImage.startsWith('data:image/')}
-                    />
-                  ) : (
-                    <img
-                      src={productImage}
-                      alt={productName}
-                      className="product-image"
-                      style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '0.5rem' }}
-                    />
-                  )}
+                  <img
+                    src={productImage}
+                    alt={productName}
+                    className="product-image"
+                    style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '0.5rem' }}
+                    onError={handleImageError}
+                  />
                 </div>
                 <div className="product-info">
                   <p className="product-name">{productName}</p>

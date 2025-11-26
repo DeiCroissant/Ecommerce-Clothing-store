@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { PageHeader } from '@/components/account'
@@ -20,7 +20,7 @@ function getCurrentUserId() {
   }
 }
 
-export default function NewReturnPage() {
+function NewReturnPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const orderIdParam = searchParams.get('orderId')
@@ -907,6 +907,14 @@ export default function NewReturnPage() {
         }
       `}</style>
     </div>
+  )
+}
+
+export default function NewReturnPage() {
+  return (
+    <Suspense fallback={<div className="p-8">Loading...</div>}>
+      <NewReturnPageContent />
+    </Suspense>
   )
 }
 

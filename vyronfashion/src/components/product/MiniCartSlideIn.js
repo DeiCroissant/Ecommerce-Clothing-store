@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ShoppingCartIcon } from '@heroicons/react/24/outline';
+import { getImageUrl, handleImageError } from '@/lib/imageHelper';
 
 export default function MiniCartSlideIn({ isOpen, onClose, items = [] }) {
   const [mounted, setMounted] = useState(false);
@@ -87,9 +88,10 @@ export default function MiniCartSlideIn({ isOpen, onClose, items = [] }) {
                     style={{ animationDelay: `${index * 50}ms` }}
                   >
                     <img
-                      src={item.product_image || item.image || '/images/placeholders/product-placeholder.jpg'}
+                      src={getImageUrl(item.product_image || item.image || '/images/placeholders/product-placeholder.jpg')}
                       alt={item.product_name || item.name}
                       className="w-20 h-20 object-cover rounded-lg"
+                      onError={handleImageError}
                     />
                     <div className="flex-1">
                       <h3 className="font-medium text-gray-900 text-sm line-clamp-2">

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import ProductGallery from '@/components/product/ProductGallery';
 import ProductInfo from '@/components/product/ProductInfo';
 import VariantSelector from '@/components/product/VariantSelector';
@@ -500,7 +501,7 @@ export default function ProductDetailPage({ params }) {
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Không tìm thấy sản phẩm</h1>
           <p className="text-gray-600 mb-4">Sản phẩm bạn đang tìm không tồn tại.</p>
-          <a href="/" className="text-blue-600 hover:underline">Quay lại trang chủ</a>
+          <Link href="/" className="text-blue-600 hover:underline">Quay lại trang chủ</Link>
         </div>
       </div>
     )

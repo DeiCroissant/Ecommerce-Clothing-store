@@ -1,8 +1,9 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
+import Image from 'next/image'
 import { formatCurrency } from '@/lib/formatCurrency'
+import { getImageUrl, handleImageError } from '@/lib/imageHelper'
 
 export function OrderProducts({ order }) {
   const items = order?.items || []
@@ -20,7 +21,7 @@ export function OrderProducts({ order }) {
 
       <div className="products-list">
         {items.map((item, index) => {
-          const itemImage = item.image || item.product_image || '/images/placeholders/product-placeholder.svg'
+          const itemImage = getImageUrl(item.image || item.product_image || '/images/placeholders/product-placeholder.svg')
           const itemName = item.name || item.product_name || 'Sản phẩm'
           const itemQuantity = item.quantity || 1
           const itemPrice = item.price || 0

@@ -331,7 +331,7 @@ export default function PaymentQRPage({ params }) {
             <h3 className="font-semibold text-blue-800 mb-2">📱 Hướng dẫn thanh toán:</h3>
             <ol className="list-decimal list-inside space-y-1 text-sm text-blue-700">
               <li>Mở app ngân hàng trên điện thoại</li>
-              <li>Chọn chức năng "Quét QR" hoặc "Chuyển khoản"</li>
+              <li>Chọn chức năng &quot;Quét QR&quot; hoặc &quot;Chuyển khoản&quot;</li>
               <li>Quét mã QR ở trên</li>
               <li>Kiểm tra thông tin và xác nhận chuyển khoản</li>
               <li>Trang sẽ tự động cập nhật khi thanh toán thành công</li>

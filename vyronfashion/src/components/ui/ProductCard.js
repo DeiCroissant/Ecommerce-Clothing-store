@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { StarIcon } from '@heroicons/react/24/solid';
 import { ShoppingCartIcon } from '@heroicons/react/24/outline';
+import { getProductImage, handleImageError } from '@/lib/imageHelper';
 
 export default function ProductCard({ product }) {
   const [hoveredColor, setHoveredColor] = useState(null);
@@ -23,17 +24,7 @@ export default function ProductCard({ product }) {
   } = product;
 
   // Lấy ảnh hiển thị: ưu tiên ảnh của màu được hover
-  const getDisplayImage = () => {
-    if (hoveredColor && variants?.colors) {
-      const colorObj = variants.colors.find(c => (c.slug || c.name) === hoveredColor);
-      if (colorObj?.images && colorObj.images.length > 0) {
-        return colorObj.images[0];
-      }
-    }
-    return image || product.images?.[0] || '/images/placeholders/product-placeholder.jpg';
-  };
-
-  const displayImage = getDisplayImage();
+  const displayImage = getProductImage(product, hoveredColor);
   const availableColors = variants?.colors?.filter(c => c.available) || [];
 
   return (
@@ -59,6 +50,7 @@ export default function ProductCard({ product }) {
         <img
           src={displayImage}
           alt={name}
+          onError={handleImageError}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
         />
         

@@ -21,6 +21,7 @@ import * as cartAPI from '@/lib/api/cart';
 import * as productAPI from '@/lib/api/products';
 import * as addressAPI from '@/lib/api/addresses';
 import { validateCoupon } from '@/lib/api/adminCoupons';
+import { getImageUrl, handleImageError } from '@/lib/imageHelper';
 
 // Khai báo trực tiếp để tránh lỗi import
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -660,7 +661,7 @@ export default function CartPage() {
       {deletedItem && (
         <div className="fixed top-24 right-8 bg-gray-900 text-white px-6 py-4 rounded-lg shadow-xl z-50 animate-slide-in-right">
           <div className="flex items-center gap-4">
-            <span>Đã xóa "{deletedItem.name}"</span>
+            <span>Đã xóa &quot;{deletedItem.name}&quot;</span>
             <button
               onClick={handleUndoDelete}
               className="text-blue-400 hover:text-blue-300 font-semibold"
@@ -801,14 +802,7 @@ function CartItemCard({ item, onQuantityChange, onDelete, onSaveForLater, isUpda
     ? (item.price.original - item.price.sale) * quantity 
     : 0;
 
-  // Normalize image URL - support base64 images too
-  const isValidImageUrl = item.image && (
-    item.image.startsWith('/') || 
-    item.image.startsWith('http://') || 
-    item.image.startsWith('https://') ||
-    item.image.startsWith('data:image/')
-  );
-  const imageUrl = isValidImageUrl ? item.image : '/placeholder-product.jpg';
+  const imageUrl = getImageUrl(item.image || '/placeholder-product.jpg');
 
   return (
     <div className="bg-white rounded-lg shadow-sm p-4 md:p-6">
@@ -816,28 +810,12 @@ function CartItemCard({ item, onQuantityChange, onDelete, onSaveForLater, isUpda
         {/* Product Image */}
         <Link href={item.slug ? `/products/${item.slug}` : '#'} className="flex-shrink-0">
           <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-lg overflow-hidden bg-gray-100">
-            {isValidImageUrl ? (
-              imageUrl.startsWith('data:image/') ? (
-                <img
-                  src={imageUrl}
-                  alt={item.name}
-                  className="w-full h-full object-cover hover:scale-105 transition-transform"
-                />
-              ) : (
-                <Image
-                  src={imageUrl}
-                  alt={item.name}
-                  fill
-                  className="object-cover hover:scale-105 transition-transform"
-                  sizes="128px"
-                  unoptimized={imageUrl.startsWith('http') && !imageUrl.includes('localhost')}
-                />
-              )
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">
-                No image
-              </div>
-            )}
+            <img
+              src={imageUrl}
+              alt={item.name}
+              className="w-full h-full object-cover"
+              onError={handleImageError}
+            />
           </div>
         </Link>
 
@@ -1065,7 +1043,7 @@ function PromoCodeSection({ promoCode, setPromoCode, appliedPromo, promoError, o
               <CheckCircleIcon className="w-5 h-5 text-green-600 mt-0.5" />
               <div>
                 <p className="font-semibold text-green-800">
-                  Mã "{appliedPromo.code}" đã được áp dụng
+                  Mã &quot;{appliedPromo.code}&quot; đã được áp dụng
                 </p>
                 <p className="text-sm text-green-700 mt-1">
                   {appliedPromo.type === 'percentage' && `Giảm ${appliedPromo.discount}%`}

@@ -18,6 +18,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import * as wishlistAPI from '@/lib/api/wishlist';
 import * as cartAPI from '@/lib/api/cart';
+import { getImageUrl, handleImageError } from '@/lib/imageHelper';
 
 /**
  * Enhanced ProductCard Component
@@ -90,10 +91,10 @@ const EnhancedProductCard = memo(function EnhancedProductCard({ product }) {
     if (colorToDisplay && product.variants?.colors) {
       const colorObj = product.variants.colors.find(c => (c.slug || c.name) === colorToDisplay);
       if (colorObj?.images && colorObj.images.length > 0) {
-        return colorObj.images[0];
+        return getImageUrl(colorObj.images[0]);
       }
     }
-    return product.image || product.images?.[0] || '';
+    return getImageUrl(product.image || product.images?.[0] || '');
   };
   
   const image = getDisplayImage();
@@ -139,7 +140,7 @@ const EnhancedProductCard = memo(function EnhancedProductCard({ product }) {
     // Add main image
     if (image && !imagesMap.has(image)) {
       imagesMap.set(image, true);
-      otherImages.push(image);
+      otherImages.push(getImageUrl(image));
     }
     
     // Add gallery images
@@ -147,7 +148,7 @@ const EnhancedProductCard = memo(function EnhancedProductCard({ product }) {
       product.images.forEach(img => {
         if (!imagesMap.has(img)) {
           imagesMap.set(img, true);
-          otherImages.push(img);
+          otherImages.push(getImageUrl(img));
         }
       });
     }

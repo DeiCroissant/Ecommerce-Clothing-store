@@ -6,8 +6,8 @@ import { EffectCoverflow, Navigation, Pagination, Autoplay } from 'swiper/module
 import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
-import Image from 'next/image';
 import * as productAPI from '@/lib/api/products';
+import { getProductImage, handleImageError } from '@/lib/imageHelper';
 
 // Import Swiper styles (v12+ bundle)
 import 'swiper/swiper-bundle.css';
@@ -36,20 +36,8 @@ export default function SwipeableGallery() {
         if (response.products && response.products.length > 0) {
           // Transform API products to slides format
           const transformedProducts = response.products.map((product, index) => {
-            // Get product image - prioritize main image, then first color image, then gallery
-            let productImage = product.image || '';
-            if (!productImage && product.variants?.colors?.length > 0) {
-              const firstColor = product.variants.colors[0];
-              if (firstColor.images && firstColor.images.length > 0) {
-                productImage = firstColor.images[0];
-              }
-            }
-            if (!productImage && product.images && product.images.length > 0) {
-              productImage = product.images[0];
-            }
-            if (!productImage) {
-              productImage = '/images/placeholders/product-placeholder.svg';
-            }
+            // Get product image using helper
+            const productImage = getProductImage(product);
 
             // Color gradients for variety
             const gradients = [
@@ -194,29 +182,12 @@ export default function SwipeableGallery() {
               >
                 {/* Image */}
                 <div className="absolute inset-0">
-                  {product.image.startsWith('data:image/') || product.image.startsWith('http') || product.image.startsWith('/') ? (
-                    <Image
-                      src={product.image}
-                      alt={product.title}
-                      fill
-                      className="object-cover group-hover:scale-110 transition-transform duration-700"
-                      sizes="(max-width: 768px) 300px, 400px"
-                      onError={(e) => {
-                        if (e.target.src.includes('placeholder')) return;
-                        e.target.src = '/images/placeholders/product-placeholder.svg';
-                      }}
-                    />
-                  ) : (
-                    <img
-                      src={product.image}
-                      alt={product.title}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                      onError={(e) => {
-                        if (e.target.src.includes('placeholder')) return;
-                        e.target.src = '/images/placeholders/product-placeholder.svg';
-                      }}
-                    />
-                  )}
+                  <img
+                    src={product.image}
+                    alt={product.title}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                    onError={handleImageError}
+                  />
                 </div>
 
                 {/* Gradient Overlay - giữ màu gradient nhẹ */}

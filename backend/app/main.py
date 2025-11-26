@@ -1,7 +1,11 @@
-from fastapi import FastAPI, HTTPException, status, Path, Response, Query, Body, Request
+from fastapi import FastAPI, HTTPException, status, Path, Response, Query, Body, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from typing import Optional
+import mimetypes
 from app.database import users_collection, categories_collection, products_collection, reviews_collection, orders_collection, cart_collection, addresses_collection, coupons_collection, returns_collection, settings_collection, close_db
+from app.image_manager import ImageManager, delete_product_images, save_uploaded_file, cleanup_unused_images, get_storage_stats
 from app.schemas import (
     UserCreate,
     UserLogin,
@@ -1249,6 +1253,7 @@ async def get_products(
         total_pages = (total + limit - 1) // limit
         
         # Projection - chỉ lấy các field cần thiết để giảm data transfer
+        # List view chỉ cần ảnh chính, không cần gallery và color images
         projection = {
             "_id": 1,
             "name": 1,
@@ -1258,9 +1263,11 @@ async def get_products(
             "category": 1,
             "pricing": 1,
             "short_description": 1,
-            "image": 1,
-            "images": 1,
-            "variants": 1,
+            "image": 1,  # Chỉ ảnh chính
+            # "images": 0,  # Không lấy gallery trong list view
+            "variants.colors.name": 1,  # Chỉ lấy tên màu, không lấy ảnh
+            "variants.colors.value": 1,
+            "variants.sizes": 1,
             "inventory": 1,
             "status": 1,
             "rating": 1,
@@ -1276,6 +1283,21 @@ async def get_products(
         
         result = []
         for product in products:
+            # Optimize variants for list view - remove color images
+            variants = product.get("variants", {})
+            if isinstance(variants, dict) and "colors" in variants:
+                colors = variants.get("colors", [])
+                if isinstance(colors, list):
+                    # Remove images from colors in list view
+                    variants["colors"] = [
+                        {
+                            "name": c.get("name", ""),
+                            "value": c.get("value", ""),
+                            "images": []  # Empty images array for list view
+                        }
+                        for c in colors
+                    ]
+            
             result.append(ProductResponse(
                 id=str(product["_id"]),
                 name=product["name"],
@@ -1290,9 +1312,9 @@ async def get_products(
                     "currency": "VND"
                 }),
                 short_description=product.get("short_description", ""),
-                image=product.get("image", ""),
-                images=product.get("images", []),
-                variants=normalize_variants(product.get("variants", {})),
+                image=product.get("image", ""),  # Chỉ ảnh chính
+                images=[],  # Empty array cho list view - tiết kiệm bandwidth
+                variants=normalize_variants(variants),
                 inventory=product.get("inventory", {
                     "in_stock": True,
                     "quantity": 0,
@@ -1330,6 +1352,142 @@ async def get_products(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lỗi server: {str(e)}"
         )
+
+# ==================== IMAGE UPLOAD ROUTES (MUST BE BEFORE /{product_id}) ====================
+
+@app.post("/api/products/upload-images")
+async def upload_multiple_images(
+    files: list[UploadFile] = File(...),
+    product_id: Optional[str] = None
+):
+    """
+    Upload nhiều ảnh cùng lúc - MUST BE BEFORE /{product_id} route
+    
+    Args:
+        files: List các file ảnh
+        product_id: ID sản phẩm (optional)
+    
+    Returns:
+        {urls: ["url1", "url2"], errors: []}
+    """
+    try:
+        print(f"\n📤 Upload request: {len(files)} file(s)")
+        urls = []
+        errors = []
+        
+        for idx, file in enumerate(files):
+            try:
+                print(f"  📸 File {idx+1}: {file.filename}")
+                print(f"     Content-Type: {file.content_type}")
+                
+                # Validate content type
+                if not file.content_type or not file.content_type.startswith('image/'):
+                    error_msg = f"File không phải là ảnh (content-type: {file.content_type})"
+                    print(f"  ❌ {error_msg}")
+                    errors.append({
+                        "filename": file.filename,
+                        "error": error_msg
+                    })
+                    continue
+                
+                # Read and save
+                file_content = await file.read()
+                file_size_mb = len(file_content) / (1024 * 1024)
+                print(f"     Size: {file_size_mb:.2f}MB")
+                
+                if file_size_mb > 10:
+                    error_msg = f"File quá lớn ({file_size_mb:.2f}MB). Tối đa 10MB"
+                    print(f"  ❌ {error_msg}")
+                    errors.append({
+                        "filename": file.filename,
+                        "error": error_msg
+                    })
+                    continue
+                
+                print(f"     💾 Saving...")
+                url, metadata = save_uploaded_file(
+                    file_content=file_content,
+                    original_filename=file.filename,
+                    product_id=product_id,
+                    optimize=True
+                )
+                
+                urls.append(url)
+                print(f"  ✅ Saved: {url}")
+                
+            except Exception as e:
+                error_msg = f"Lỗi khi xử lý file: {str(e)}"
+                print(f"  ❌ {error_msg}")
+                errors.append({
+                    "filename": file.filename,
+                    "error": error_msg
+                })
+        
+        print(f"\n✅ Upload complete: {len(urls)}/{len(files)} success\n")
+        
+        return {
+            "success": True,
+            "urls": urls,  # Frontend expects "urls" array
+            "errors": errors,
+            "total": len(files),
+            "success_count": len(urls),
+            "error_count": len(errors)
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi khi upload ảnh: {str(e)}"
+        )
+
+@app.post("/api/products/upload-image")
+async def upload_product_image(
+    file: UploadFile = File(...),
+    product_id: Optional[str] = None
+):
+    """
+    Upload ảnh sản phẩm - MUST BE BEFORE /{product_id} route
+    
+    Args:
+        file: File ảnh cần upload
+        product_id: ID sản phẩm (optional, để tạo tên file unique)
+    
+    Returns:
+        URL của ảnh đã upload
+    """
+    try:
+        # Validate file type
+        if not file.content_type.startswith('image/'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File phải là ảnh (jpg, png, webp, gif)"
+            )
+        
+        # Read file content
+        file_content = await file.read()
+        
+        # Save file
+        url, metadata = save_uploaded_file(
+            file_content=file_content,
+            original_filename=file.filename,
+            product_id=product_id
+        )
+        
+        return {
+            "success": True,
+            "url": url,
+            "metadata": metadata
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi khi upload ảnh: {str(e)}"
+        )
+
+# ==================== PRODUCT CRUD ROUTES ====================
 
 @app.get("/api/products/{product_id}", response_model=ProductResponse)
 async def get_product(product_id: str = Path(...)):
@@ -1380,7 +1538,9 @@ async def get_product(product_id: str = Path(...)):
 async def create_product(product_data: ProductCreate):
     """Tạo sản phẩm mới"""
     try:
-        print(f"📝 Creating product: {product_data.name}")
+        print(f"\n📝 Creating product: {product_data.name}")
+        print(f"   SKU: {product_data.sku}")
+        print(f"   Slug: {product_data.slug}")
         
         # Kiểm tra slug đã tồn tại chưa
         existing = await products_collection.find_one({"slug": product_data.slug})
@@ -1398,6 +1558,21 @@ async def create_product(product_data: ProductCreate):
                 detail="SKU đã được sử dụng"
             )
         
+        # Convert and validate variants
+        variants_dict = product_data.variants.dict()
+        
+        # Ensure each color has images field
+        if 'colors' in variants_dict:
+            for idx, color in enumerate(variants_dict['colors']):
+                if 'images' not in color:
+                    color['images'] = []
+                # Filter out blob URLs
+                color['images'] = [
+                    img for img in color.get('images', [])
+                    if img and isinstance(img, str) and not img.startswith('blob:')
+                ]
+                print(f"   Color {idx}: {color.get('name', 'N/A')} - {len(color['images'])} images")
+        
         new_product = {
             "name": product_data.name,
             "slug": product_data.slug,
@@ -1408,7 +1583,7 @@ async def create_product(product_data: ProductCreate):
             "short_description": product_data.short_description,
             "image": product_data.image,
             "images": product_data.images,
-            "variants": product_data.variants.dict(),
+            "variants": variants_dict,
             "inventory": product_data.inventory.dict(),
             "status": product_data.status,
             "rating": product_data.rating.dict(),
@@ -1418,14 +1593,9 @@ async def create_product(product_data: ProductCreate):
             "updated_at": datetime.now().isoformat()
         }
         
-        print(f"💾 Saving product to DB: {new_product['name']}")
-        # Debug: Log images in color variants
-        if 'variants' in new_product and 'colors' in new_product['variants']:
-            for i, color in enumerate(new_product['variants']['colors']):
-                images_count = len(color.get('images', []))
-                print(f"  📸 Color {i} ({color.get('name', 'N/A')}): {images_count} images")
+        print(f"💾 Saving product to DB...")
         result = await products_collection.insert_one(new_product)
-        print(f"✅ Product saved with ID: {result.inserted_id}")
+        print(f"✅ Product saved with ID: {result.inserted_id}\n")
         
         return ProductResponse(
             id=str(result.inserted_id),
@@ -1559,12 +1729,18 @@ async def update_product(product_id: str = Path(...), product_data: ProductUpdat
 
 @app.delete("/api/products/{product_id}", response_model=ProductDeleteResponse)
 async def delete_product(product_id: str = Path(...)):
-    """Xóa sản phẩm"""
+    """Xóa sản phẩm và tất cả ảnh liên quan"""
     try:
         product = await products_collection.find_one({"_id": ObjectId(product_id)})
         if not product:
             raise HTTPException(status_code=404, detail="Không tìm thấy sản phẩm")
         
+        # Xóa tất cả ảnh của sản phẩm trước
+        print(f"\n🗑️  Đang xóa ảnh của sản phẩm: {product.get('name')}")
+        image_stats = delete_product_images(product)
+        print(f"✅ Đã xóa {image_stats['deleted']}/{image_stats['total']} ảnh")
+        
+        # Xóa sản phẩm khỏi database
         await products_collection.delete_one({"_id": ObjectId(product_id)})
         
         product_response = ProductResponse(
@@ -1608,6 +1784,94 @@ async def delete_product(product_id: str = Path(...)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lỗi server: {str(e)}"
+        )
+
+# ==================== IMAGE MANAGEMENT API ENDPOINTS ====================
+
+@app.delete("/api/products/delete-image")
+async def delete_single_image(image_url: str = Query(..., description="URL ảnh cần xóa")):
+    """
+    Xóa 1 ảnh sản phẩm
+    
+    Args:
+        image_url: URL của ảnh cần xóa
+    
+    Returns:
+        Kết quả xóa
+    """
+    try:
+        from app.image_manager import delete_image
+        
+        success = delete_image(image_url)
+        
+        if success:
+            return {
+                "success": True,
+                "message": f"Đã xóa ảnh: {image_url}"
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Không tìm thấy ảnh"
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi khi xóa ảnh: {str(e)}"
+        )
+
+
+@app.post("/api/products/cleanup-images")
+async def cleanup_images_endpoint():
+    """
+    Xóa các ảnh không được sử dụng bởi bất kỳ sản phẩm nào
+    
+    Returns:
+        Thống kê về việc cleanup
+    """
+    try:
+        # Lấy tất cả sản phẩm
+        products = await products_collection.find().to_list(length=None)
+        
+        # Cleanup
+        stats = cleanup_unused_images(products)
+        
+        return {
+            "success": True,
+            "message": f"Đã xóa {stats['deleted']} ảnh không sử dụng",
+            "stats": stats
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi khi cleanup: {str(e)}"
+        )
+
+
+@app.get("/api/products/storage-stats")
+async def get_storage_statistics():
+    """
+    Lấy thống kê về dung lượng lưu trữ ảnh
+    
+    Returns:
+        Thống kê storage
+    """
+    try:
+        stats = get_storage_stats()
+        
+        return {
+            "success": True,
+            "stats": stats
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi khi lấy thống kê: {str(e)}"
         )
 
 # ==================== WISHLIST API ENDPOINTS ====================
@@ -4522,6 +4786,98 @@ async def update_payment_settings(settings_update: PaymentSettingsUpdate):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lỗi server: {str(e)}"
         )
+
+# ==================== MIGRATION API - FIX COLOR IMAGES ====================
+@app.post("/api/admin/migrate-color-images")
+async def migrate_color_images():
+    """
+    Migration API: Gán ảnh cho tất cả màu sắc
+    """
+    try:
+        from pathlib import Path
+        import logging
+        
+        logging.info("🔧 Starting color images migration...")
+        
+        # Lấy tất cả ảnh từ uploads/products
+        upload_dir = Path("uploads/products")
+        if not upload_dir.exists():
+            raise HTTPException(status_code=404, detail="Thư mục uploads không tồn tại")
+        
+        all_images = [f"/uploads/products/{f.name}" for f in upload_dir.iterdir() if f.is_file() and not f.name.startswith('.')]
+        logging.info(f"📸 Found {len(all_images)} images")
+        
+        # Lấy tất cả sản phẩm
+        products = await products_collection.find({}).to_list(length=None)
+        logging.info(f"📦 Found {len(products)} products")
+        
+        updated_count = 0
+        skipped_count = 0
+        error_products = []
+        
+        for product in products:
+            product_id = product.get('_id')
+            product_name = product.get('name', 'Unknown')
+            colors = product.get('variants', {}).get('colors', [])
+            
+            if not colors:
+                skipped_count += 1
+                continue
+            
+            # Gán ảnh cho từng màu
+            needs_update = False
+            for color_idx, color in enumerate(colors):
+                # Nếu màu chưa có ảnh hoặc ảnh rỗng hoặc là base64
+                current_images = color.get('images', [])
+                has_valid_images = current_images and len(current_images) > 0 and not any(img.startswith('data:image') for img in current_images)
+                
+                if not has_valid_images:
+                    # Gán ảnh theo index
+                    if color_idx < len(all_images):
+                        color['images'] = [all_images[color_idx]]
+                    else:
+                        color['images'] = [all_images[color_idx % len(all_images)]] if all_images else []
+                    needs_update = True
+                    logging.info(f"  ✅ {product_name} - {color.get('name')}: {color['images'][0][:60] if color['images'] else 'no image'}")
+            
+            # Cập nhật database
+            if needs_update:
+                try:
+                    result = await products_collection.update_one(
+                        {'_id': product_id},
+                        {'$set': {'variants.colors': colors}}
+                    )
+                    if result.modified_count > 0:
+                        updated_count += 1
+                    else:
+                        error_products.append(product_name)
+                        logging.warning(f"  ⚠️ {product_name}: No modification")
+                except Exception as e:
+                    error_products.append(product_name)
+                    logging.error(f"  ❌ {product_name}: {str(e)}")
+            else:
+                skipped_count += 1
+        
+        logging.info(f"✅ Migration completed: {updated_count} updated, {skipped_count} skipped")
+        
+        return {
+            "success": True,
+            "message": f"Migration hoàn tất",
+            "updated": updated_count,
+            "skipped": skipped_count,
+            "total": len(products),
+            "total_images": len(all_images)
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Migration lỗi: {str(e)}"
+        )
+
+# ==================== STATIC FILES - SERVE ẢNH SẢN PHẨM ====================
+# Mount CUỐI CÙNG để không override các route khác
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 if __name__ == "__main__":
     import uvicorn

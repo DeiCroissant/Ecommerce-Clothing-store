@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { Trash2, Heart } from 'lucide-react'
 import { formatCurrency } from '@/lib/formatCurrency'
+import { getProductImage, handleImageError } from '@/lib/imageHelper'
 import styles from './WishlistGrid.module.css'
 
 export function WishlistGrid({ items = [], onRemove }) {
@@ -15,16 +16,16 @@ export function WishlistGrid({ items = [], onRemove }) {
       {items.map((product) => {
         const price = product.pricing?.sale || product.pricing?.original || 0
         const originalPrice = product.pricing?.original && product.pricing?.sale ? product.pricing.original : null
-        const image = product.image || product.images?.[0] || ''
         
         return (
           <div key={product.id} className={styles.card}>
             <Link href={`/products/${product.slug}`} className={styles.imageLink}>
               <div className={styles.imageContainer}>
                 <img
-                  src={image}
+                  src={getProductImage(product)}
                   alt={product.name}
                   className={styles.image}
+                  onError={handleImageError}
                 />
               </div>
             </Link>
