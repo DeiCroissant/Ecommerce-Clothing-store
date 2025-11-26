@@ -41,8 +41,8 @@ def generate_vietqr(account_number: str, bank_id: str, amount: float, descriptio
         description_encoded = urllib.parse.quote(description)
         account_name_encoded = urllib.parse.quote(VIETQR_ACCOUNT_NAME)
         
-        # URL QR từ VietQR API - compact2 hiển thị đầy đủ thông tin
-        template = "compact2"
+        # URL QR từ VietQR API - compact = chỉ có QR code, không có thông tin text
+        template = "compact"
         vietqr_url = f"https://img.vietqr.io/image/{bank_id}-{account_number}-{template}.png?amount={int(amount)}&addInfo={description_encoded}&accountName={account_name_encoded}"
         
         # Luôn dùng URL từ VietQR service vì nó generate QR chuẩn

@@ -16,25 +16,46 @@ export default function PaymentQRPage({ params }) {
   const [paid, setPaid] = useState(false);
   const [error, setError] = useState(null);
   const [timeLeft, setTimeLeft] = useState(600); // 10 phút = 600 giây
+  const [paymentCreatedAt, setPaymentCreatedAt] = useState(null);
 
-  // Countdown timer
+  // Calculate time left based on payment creation time
   useEffect(() => {
-    if (paid || loading) return;
+    if (!paymentCreatedAt || paid || loading) return;
 
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          // Hết thời gian, redirect về order detail
-          router.push(`/account/orders/${orderId}`);
-          return 0;
+    const calculateTimeLeft = () => {
+      const now = new Date().getTime();
+      const createdTime = new Date(paymentCreatedAt).getTime();
+      const elapsedSeconds = Math.floor((now - createdTime) / 1000);
+      const remainingSeconds = Math.max(0, 600 - elapsedSeconds); // 10 phút = 600 giây
+      
+      if (remainingSeconds === 0) {
+        // Hết thời gian thanh toán - redirect về giỏ hàng
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('showToast', { 
+            detail: { message: 'Hết thời gian thanh toán. Vui lòng đặt hàng lại.', type: 'error', duration: 3000 } 
+          }));
         }
-        return prev - 1;
-      });
+        router.push('/cart');
+      }
+      
+      return remainingSeconds;
+    };
+
+    // Set initial time
+    setTimeLeft(calculateTimeLeft());
+
+    // Update every second
+    const timer = setInterval(() => {
+      const remaining = calculateTimeLeft();
+      setTimeLeft(remaining);
+      
+      if (remaining === 0) {
+        clearInterval(timer);
+      }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [paid, loading, orderId, router]);
+  }, [paymentCreatedAt, paid, loading, router]);
 
   // Format time MM:SS
   const formatTime = (seconds) => {
@@ -54,6 +75,10 @@ export default function PaymentQRPage({ params }) {
         if (!orderData.id) {
           throw new Error('Không tìm thấy đơn hàng');
         }
+
+        // Set payment creation time first (before QR generation)
+        const createdAt = orderData.payment?.created_at || orderData.created_at || new Date().toISOString();
+        setPaymentCreatedAt(createdAt);
 
         // Tạo QR code VietQR
         const qrRes = await fetch(`${API_BASE_URL}/api/payments/vietqr/initiate`, {
@@ -91,6 +116,46 @@ export default function PaymentQRPage({ params }) {
         if (statusData.paid) {
           setPaid(true);
           clearInterval(checkPaymentInterval);
+          
+          // Clear cart after successful payment
+          try {
+            const pendingCheckoutStr = localStorage.getItem('pendingCheckout');
+            if (pendingCheckoutStr) {
+              const pendingCheckout = JSON.parse(pendingCheckoutStr);
+              
+              if (pendingCheckout.orderId === orderId && pendingCheckout.userId) {
+                if (pendingCheckout.isBuyNow && pendingCheckout.buyNowItem) {
+                  // Remove specific item for Buy Now
+                  const buyNowItem = JSON.parse(pendingCheckout.buyNowItem);
+                  await fetch(`${API_BASE_URL}/api/cart/${pendingCheckout.userId}/item`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      product_id: buyNowItem.product_id,
+                      variant_color: buyNowItem.variant_color,
+                      variant_size: buyNowItem.variant_size
+                    })
+                  });
+                  localStorage.removeItem('buyNowItem');
+                } else {
+                  // Clear entire cart for normal checkout
+                  await fetch(`${API_BASE_URL}/api/cart/${pendingCheckout.userId}/clear`, {
+                    method: 'DELETE'
+                  });
+                  localStorage.removeItem('appliedCoupon');
+                }
+                
+                // Dispatch cart changed event
+                window.dispatchEvent(new Event('cartChanged'));
+                
+                // Clear pending checkout
+                localStorage.removeItem('pendingCheckout');
+                console.log('✅ Cart cleared after successful payment');
+              }
+            }
+          } catch (error) {
+            console.error('Error clearing cart after payment:', error);
+          }
           
           // Show success toast
           if (typeof window !== 'undefined') {
@@ -180,18 +245,52 @@ export default function PaymentQRPage({ params }) {
             </p>
           </div>
 
-          {/* QR Code Image */}
+          {/* QR Code Image với Scan Animation */}
           <div className="flex justify-center mb-6">
-            <div className="bg-white p-4 rounded-lg shadow-inner border-4 border-gray-100">
-              {qrData?.qr_data_url && (
-                <img 
-                  src={qrData.qr_data_url}
-                  alt="QR Code" 
-                  className="w-64 h-64 object-contain"
-                />
-              )}
+            <div className="relative inline-block">
+              {/* QR Code Container */}
+              <div className="bg-white p-6 rounded-2xl shadow-xl border-4 border-gray-100 relative overflow-hidden">
+                {qrData?.qr_data_url && (
+                  <img 
+                    src={qrData.qr_data_url}
+                    alt="QR Code" 
+                    className="w-96 h-96 object-contain relative z-10"
+                  />
+                )}
+                
+                {/* Scanning Line Animation */}
+                <div className="absolute inset-0 pointer-events-none z-20">
+                  <div className="absolute w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-70 animate-scan-line"></div>
+                </div>
+                
+                {/* Corner Decorations */}
+                <div className="absolute top-4 left-4 w-8 h-8 border-t-4 border-l-4 border-blue-500 rounded-tl-lg"></div>
+                <div className="absolute top-4 right-4 w-8 h-8 border-t-4 border-r-4 border-blue-500 rounded-tr-lg"></div>
+                <div className="absolute bottom-4 left-4 w-8 h-8 border-b-4 border-l-4 border-blue-500 rounded-bl-lg"></div>
+                <div className="absolute bottom-4 right-4 w-8 h-8 border-b-4 border-r-4 border-blue-500 rounded-br-lg"></div>
+              </div>
             </div>
           </div>
+          
+          {/* Add custom CSS for scan animation */}
+          <style jsx>{`
+            @keyframes scan-line {
+              0% {
+                top: 0;
+                opacity: 0;
+              }
+              50% {
+                opacity: 0.7;
+              }
+              100% {
+                top: 100%;
+                opacity: 0;
+              }
+            }
+            .animate-scan-line {
+              animation: scan-line 2s ease-in-out infinite;
+            }
+          `}</style>
 
           {/* Payment Info */}
           <div className="bg-gray-50 rounded-lg p-6 space-y-3">

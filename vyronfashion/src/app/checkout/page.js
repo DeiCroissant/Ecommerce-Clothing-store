@@ -305,79 +305,89 @@ export default function CheckoutPage() {
       const urlParams = new URLSearchParams(window.location.search);
       const isBuyNow = urlParams.get('buyNow') === 'true';
 
-      // Clear cart or remove specific item based on checkout type
-      try {
-        if (!userId) {
-          console.warn('Cannot clear cart: userId is null');
-        } else {
-          if (isBuyNow) {
-            // For Buy Now: Only remove the specific item from cart
-            const buyNowItemStr = localStorage.getItem('buyNowItem');
-            if (buyNowItemStr) {
-              const buyNowItem = JSON.parse(buyNowItemStr);
-              
-              // Remove this specific item from cart
-              const removeResponse = await fetch(`${API_BASE_URL}/api/cart/${userId}/item`, {
-                method: 'DELETE',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  product_id: buyNowItem.product_id,
-                  variant_color: buyNowItem.variant_color,
-                  variant_size: buyNowItem.variant_size
-                })
+      // Save checkout info to localStorage for later cart clearing (after payment success)
+      if (userId) {
+        localStorage.setItem('pendingCheckout', JSON.stringify({
+          userId,
+          orderId: order.id,
+          isBuyNow,
+          buyNowItem: isBuyNow ? localStorage.getItem('buyNowItem') : null,
+          paymentMethod
+        }));
+      }
+
+      // Redirect based on payment method
+      if (paymentMethod === 'bank_transfer') {
+        // Redirect to QR payment page - cart will be cleared after payment success
+        router.push(`/payment/${order.id}`);
+      } else {
+        // COD: Clear cart immediately since payment is confirmed
+        try {
+          if (!userId) {
+            console.warn('Cannot clear cart: userId is null');
+          } else {
+            if (isBuyNow) {
+              // For Buy Now: Only remove the specific item from cart
+              const buyNowItemStr = localStorage.getItem('buyNowItem');
+              if (buyNowItemStr) {
+                const buyNowItem = JSON.parse(buyNowItemStr);
+                
+                // Remove this specific item from cart
+                const removeResponse = await fetch(`${API_BASE_URL}/api/cart/${userId}/item`, {
+                  method: 'DELETE',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    product_id: buyNowItem.product_id,
+                    variant_color: buyNowItem.variant_color,
+                    variant_size: buyNowItem.variant_size
+                  })
+                });
+                
+                if (removeResponse.ok) {
+                  console.log('Buy Now item removed from cart');
+                  
+                  // Dispatch cart changed event
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new Event('cartChanged'));
+                  }
+                  
+                  // Clear buyNowItem from localStorage
+                  localStorage.removeItem('buyNowItem');
+                }
+              }
+            } else {
+              // Normal checkout: Clear entire cart
+              const clearResponse = await fetch(`${API_BASE_URL}/api/cart/${userId}/clear`, {
+                method: 'DELETE'
               });
               
-              if (removeResponse.ok) {
-                console.log('Buy Now item removed from cart');
+              if (clearResponse.ok) {
+                const result = await clearResponse.json();
+                console.log('Cart cleared:', result);
                 
                 // Dispatch cart changed event
                 if (typeof window !== 'undefined') {
                   window.dispatchEvent(new Event('cartChanged'));
                 }
                 
-                // Clear buyNowItem from localStorage
-                localStorage.removeItem('buyNowItem');
+                // Force reload cart state
+                setCartItems([]);
+                
+                // Clear saved coupon
+                localStorage.removeItem('appliedCoupon');
+              } else {
+                const errorData = await clearResponse.text();
+                console.error('Failed to clear cart:', clearResponse.status, errorData);
               }
-            }
-          } else {
-            // Normal checkout: Clear entire cart
-            const clearResponse = await fetch(`${API_BASE_URL}/api/cart/${userId}/clear`, {
-              method: 'DELETE'
-            });
-            
-            if (clearResponse.ok) {
-              const result = await clearResponse.json();
-              console.log('Cart cleared:', result);
-              
-              // Dispatch cart changed event
-              if (typeof window !== 'undefined') {
-                window.dispatchEvent(new Event('cartChanged'));
-              }
-              
-              // Force reload cart state
-              setCartItems([]);
-              
-              // Clear saved coupon
-              localStorage.removeItem('appliedCoupon');
-            } else {
-              const errorData = await clearResponse.text();
-              console.error('Failed to clear cart:', clearResponse.status, errorData);
             }
           }
+        } catch (cartError) {
+          console.error('Error clearing cart:', cartError);
         }
-      } catch (cartError) {
-        // Don't block checkout flow if cart clearing fails
-        console.error('Error clearing cart:', cartError);
-      }
-
-      // Redirect based on payment method
-      if (paymentMethod === 'bank_transfer') {
-        // Redirect to QR payment page - không hiển thị toast success ở đây
-        router.push(`/payment/${order.id}`);
-      } else {
-        // Show success message for COD only
+        
+        // Show success message for COD
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('showToast', { 
             detail: { message: 'Đặt hàng thành công!', type: 'success', duration: 3000 } 
