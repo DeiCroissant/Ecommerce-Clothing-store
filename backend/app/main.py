@@ -89,6 +89,7 @@ import secrets
 import os
 import re
 from dotenv import load_dotenv
+import asyncio
 
 # Load environment variables
 load_dotenv()
@@ -748,16 +749,35 @@ async def reset_password(request: ResetPasswordRequest):
 
 # ==================== CATEGORY API ENDPOINTS ====================
 
+# Cache categories data trong 5 phút
+categories_cache = {"data": None, "timestamp": None}
+CATEGORIES_CACHE_DURATION = 300  # seconds
+
 @app.get("/api/categories", response_model=CategoryListResponse)
 async def get_categories(parent_id: Optional[str] = Query(None), status: Optional[str] = Query(None)):
     """
-    Lấy danh sách danh mục
+    Lấy danh sách danh mục - VERSION TỐI ƯU
     - Không có parent_id: Lấy tất cả
     - parent_id=null hoặc không gửi: Lấy danh mục chính (parent_id = None)
     - parent_id=<id>: Lấy danh mục con
     - status: Lọc theo trạng thái (active/inactive)
     """
     try:
+        # Tạo cache key từ params
+        cache_key = f"{parent_id}_{status}"
+        
+        # Check cache
+        now = datetime.now()
+        if categories_cache.get("data") and categories_cache.get("timestamp"):
+            cached_data = categories_cache["data"].get(cache_key)
+            if cached_data:
+                cache_age = (now - categories_cache["timestamp"]).total_seconds()
+                if cache_age < CATEGORIES_CACHE_DURATION:
+                    print(f"✅ Returning cached categories data (age: {cache_age:.1f}s)")
+                    return cached_data
+        
+        print(f"🔄 Generating fresh categories data...")
+        
         query = {}
         # Xử lý parent_id: nếu là "null" string hoặc None, lấy danh mục chính
         if parent_id is not None:
@@ -765,35 +785,96 @@ async def get_categories(parent_id: Optional[str] = Query(None), status: Optiona
                 query["parent_id"] = None
             else:
                 query["parent_id"] = parent_id
-        # Nếu không có parent_id parameter, lấy tất cả (không filter)
         
         if status:
             query["status"] = status
         
         print(f"🔍 Query categories with: {query}")
-        # Sort theo created_at tăng dần (tạo trước hiển thị trước) hoặc _id nếu không có created_at
-        cursor = categories_collection.find(query).sort([("created_at", 1), ("_id", 1)])
-        categories = await cursor.to_list(length=None)
         
+        # ========== AGGREGATION PIPELINE - TỐI ƯU ==========
+        
+        # Pipeline để lấy categories với subcategories count và product count
+        pipeline = [
+            {"$match": query},
+            {"$sort": {"created_at": 1, "_id": 1}},
+            # Lookup subcategories count
+            {
+                "$lookup": {
+                    "from": "categories",
+                    "let": {"cat_id": {"$toString": "$_id"}},
+                    "pipeline": [
+                        {"$match": {"$expr": {"$eq": ["$parent_id", "$$cat_id"]}}}
+                    ],
+                    "as": "subcategories"
+                }
+            },
+            # Lookup products count (chỉ active)
+            {
+                "$lookup": {
+                    "from": "products",
+                    "localField": "slug",
+                    "foreignField": "category.slug",
+                    "pipeline": [
+                        {"$match": {"status": "active"}}
+                    ],
+                    "as": "direct_products"
+                }
+            },
+            # Project final result
+            {
+                "$project": {
+                    "name": 1,
+                    "slug": 1,
+                    "description": 1,
+                    "parent_id": 1,
+                    "status": 1,
+                    "created_at": 1,
+                    "updated_at": 1,
+                    "subcategories_count": {"$size": "$subcategories"},
+                    "subcategory_slugs": "$subcategories.slug",
+                    "direct_product_count": {"$size": "$direct_products"}
+                }
+            }
+        ]
+        
+        categories = await categories_collection.aggregate(pipeline).to_list(length=None)
+        
+        # Tính product count cho từng category (bao gồm subcategories)
+        # Lấy tất cả subcategory slugs một lần
+        all_subcategory_slugs = set()
+        for cat in categories:
+            all_subcategory_slugs.update(cat.get("subcategory_slugs", []))
+        
+        # Query products một lần cho tất cả subcategories
+        subcategory_products = {}
+        if all_subcategory_slugs:
+            pipeline_products = [
+                {
+                    "$match": {
+                        "category.slug": {"$in": list(all_subcategory_slugs)},
+                        "status": "active"
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": "$category.slug",
+                        "count": {"$sum": 1}
+                    }
+                }
+            ]
+            product_counts = await products_collection.aggregate(pipeline_products).to_list(length=None)
+            subcategory_products = {item["_id"]: item["count"] for item in product_counts}
+        
+        # Build result
         result = []
         for cat in categories:
             cat_id = str(cat["_id"])
             cat_slug = cat["slug"]
             
-            # Đếm số danh mục con
-            subcategories_count = await categories_collection.count_documents({"parent_id": cat_id})
-            
-            # Đếm số sản phẩm trong danh mục này và các danh mục con
-            # Lấy tất cả subcategories của category này
-            subcategories = await categories_collection.find({"parent_id": cat_id}).to_list(length=None)
-            subcategory_slugs = [sub["slug"] for sub in subcategories]
-            
-            # Đếm sản phẩm có category.slug trùng với category hoặc subcategories
-            category_slugs = [cat_slug] + subcategory_slugs
-            product_count = await products_collection.count_documents({
-                "category.slug": {"$in": category_slugs},
-                "status": "active"  # Chỉ đếm sản phẩm active
-            })
+            # Tính tổng product count (direct + subcategories)
+            direct_count = cat.get("direct_product_count", 0)
+            sub_count = sum(subcategory_products.get(slug, 0) for slug in cat.get("subcategory_slugs", []))
+            total_product_count = direct_count + sub_count
             
             result.append(CategoryResponse(
                 id=cat_id,
@@ -802,18 +883,29 @@ async def get_categories(parent_id: Optional[str] = Query(None), status: Optiona
                 description=cat.get("description", ""),
                 parent_id=cat.get("parent_id"),
                 status=cat.get("status", "active"),
-                product_count=product_count,
-                subcategories_count=subcategories_count,
+                product_count=total_product_count,
+                subcategories_count=cat.get("subcategories_count", 0),
                 created_at=cat.get("created_at"),
                 updated_at=cat.get("updated_at")
             ))
         
-        return CategoryListResponse(
+        response = CategoryListResponse(
             success=True,
             categories=result,
             total=len(result)
         )
+        
+        # Cache response
+        if categories_cache.get("data") is None:
+            categories_cache["data"] = {}
+        categories_cache["data"][cache_key] = response
+        categories_cache["timestamp"] = now
+        
+        print(f"✅ Categories data generated and cached")
+        return response
+        
     except Exception as e:
+        print(f"❌ Error in get_categories: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lỗi server: {str(e)}"
@@ -882,6 +974,11 @@ async def create_category(category_data: CategoryCreate):
         result = await categories_collection.insert_one(new_category)
         print(f"✅ Category saved with ID: {result.inserted_id}")
         
+        # Clear cache
+        categories_cache["data"] = None
+        categories_cache["timestamp"] = None
+        print("🗑️  Categories cache cleared")
+        
         return CategoryResponse(
             id=str(result.inserted_id),
             name=new_category["name"],
@@ -936,6 +1033,11 @@ async def update_category(category_id: str = Path(...), category_data: CategoryU
             {"$set": update_data}
         )
         
+        # Clear cache
+        categories_cache["data"] = None
+        categories_cache["timestamp"] = None
+        print("🗑️  Categories cache cleared")
+        
         updated = await categories_collection.find_one({"_id": ObjectId(category_id)})
         
         return CategoryResponse(
@@ -977,6 +1079,11 @@ async def delete_category(category_id: str = Path(...)):
         
         # Xóa danh mục chính
         await categories_collection.delete_one({"_id": ObjectId(category_id)})
+        
+        # Clear cache
+        categories_cache["data"] = None
+        categories_cache["timestamp"] = None
+        print("🗑️  Categories cache cleared")
         
         # TODO: Xóa hoặc cập nhật products trong danh mục này
         
@@ -1037,7 +1144,7 @@ async def get_products(
     sort: Optional[str] = Query('newest')
 ):
     """
-    Lấy danh sách sản phẩm với filter hỗ trợ
+    Lấy danh sách sản phẩm với filter hỗ trợ - VERSION TỐI ƯU VỚI CACHE
     - category_slug: Lọc theo category slug
     - status: Lọc theo trạng thái (active/inactive)
     - slug: Tìm sản phẩm theo slug
@@ -1050,6 +1157,21 @@ async def get_products(
     - sort: Sắp xếp (newest, price_asc, price_desc)
     """
     try:
+        # Cache key based on all parameters
+        cache_key = f"{category_slug}_{status}_{slug}_{sizes}_{colors}_{brands}_{price_min}_{price_max}_{page}_{limit}_{sort}"
+        now = datetime.now()
+        
+        # Check cache (2 minutes for products - frequently updated)
+        if admin_products_cache.get("data"):
+            cached = admin_products_cache["data"].get(cache_key)
+            if cached:
+                cache_age = (now - admin_products_cache["timestamp"]).total_seconds()
+                if cache_age < ADMIN_CACHE_DURATION:
+                    print(f"✅ Returning cached products (age: {cache_age:.1f}s)")
+                    return cached
+        
+        print(f"🔄 Generating fresh products data...")
+        
         query = {}
         
         if slug:
@@ -1184,7 +1306,7 @@ async def get_products(
                 updated_at=product.get("updated_at")
             ))
         
-        return ProductListResponse(
+        response = ProductListResponse(
             success=True,
             products=result,
             total=total,
@@ -1192,7 +1314,18 @@ async def get_products(
             limit=limit,
             totalPages=total_pages
         )
+        
+        # Cache response
+        if admin_products_cache.get("data") is None:
+            admin_products_cache["data"] = {}
+        admin_products_cache["data"][cache_key] = response
+        admin_products_cache["timestamp"] = now
+        
+        print(f"✅ Products data cached")
+        return response
+        
     except Exception as e:
+        print(f"❌ Error in get_products: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lỗi server: {str(e)}"
@@ -2196,6 +2329,13 @@ async def get_pending_orders_count():
             detail=f"Lỗi server: {str(e)}"
         )
 
+# Cache cho admin queries
+admin_orders_cache = {"data": None, "timestamp": None}
+admin_customers_cache = {"data": None, "timestamp": None}
+admin_returns_cache = {"data": None, "timestamp": None}
+admin_products_cache = {"data": None, "timestamp": None}
+ADMIN_CACHE_DURATION = 120  # 2 phút
+
 @app.get("/api/admin/orders", response_model=OrderListResponse)
 async def get_all_orders(
     status: Optional[str] = Query(None, description="Lọc theo trạng thái"),
@@ -2203,8 +2343,23 @@ async def get_all_orders(
     limit: int = Query(20, ge=1, le=100, description="Số lượng mỗi trang"),
     search: Optional[str] = Query(None, description="Tìm kiếm theo mã đơn hàng hoặc tên khách hàng")
 ):
-    """Lấy tất cả đơn hàng (Admin only)"""
+    """Lấy tất cả đơn hàng (Admin only) - TỐI ƯU"""
     try:
+        # Cache key
+        cache_key = f"{status}_{page}_{limit}_{search}"
+        now = datetime.now()
+        
+        # Check cache
+        if admin_orders_cache.get("data"):
+            cached = admin_orders_cache["data"].get(cache_key)
+            if cached:
+                cache_age = (now - admin_orders_cache["timestamp"]).total_seconds()
+                if cache_age < ADMIN_CACHE_DURATION:
+                    print(f"✅ Returning cached admin orders (age: {cache_age:.1f}s)")
+                    return cached
+        
+        print(f"🔄 Generating fresh admin orders data...")
+        
         query = {}
         
         # Filter by status
@@ -2229,12 +2384,11 @@ async def get_all_orders(
         # Calculate skip
         skip = (page - 1) * limit
         
-        # Get total count
-        total = await orders_collection.count_documents(query)
+        # Get total count and orders in parallel
+        total_task = orders_collection.count_documents(query)
+        orders_task = orders_collection.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(length=limit)
         
-        # Get orders
-        cursor = orders_collection.find(query).sort("created_at", -1).skip(skip).limit(limit)
-        orders = await cursor.to_list(length=limit)
+        total, orders = await asyncio.gather(total_task, orders_task)
         
         from app.schemas import ShippingAddress
         result_orders = []
@@ -2275,12 +2429,23 @@ async def get_all_orders(
                 updated_at=order.get("updated_at")
             ))
         
-        return OrderListResponse(
+        response = OrderListResponse(
             success=True,
             orders=result_orders,
             total=total
         )
+        
+        # Cache response
+        if admin_orders_cache.get("data") is None:
+            admin_orders_cache["data"] = {}
+        admin_orders_cache["data"][cache_key] = response
+        admin_orders_cache["timestamp"] = now
+        
+        print(f"✅ Admin orders data cached")
+        return response
+        
     except Exception as e:
+        print(f"❌ Error in get_all_orders: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lỗi server: {str(e)}"
@@ -2811,8 +2976,23 @@ async def get_all_customers(
     role: Optional[str] = Query(None, description="Lọc theo role (user/admin)"),
     is_banned: Optional[bool] = Query(None, description="Lọc theo trạng thái ban"),
 ):
-    """Lấy danh sách tất cả khách hàng với phân trang và tìm kiếm"""
+    """Lấy danh sách tất cả khách hàng - VERSION TỐI ƯU"""
     try:
+        # Cache key
+        cache_key = f"{page}_{limit}_{search}_{role}_{is_banned}"
+        now = datetime.now()
+        
+        # Check cache
+        if admin_customers_cache.get("data"):
+            cached = admin_customers_cache["data"].get(cache_key)
+            if cached:
+                cache_age = (now - admin_customers_cache["timestamp"]).total_seconds()
+                if cache_age < ADMIN_CACHE_DURATION:
+                    print(f"✅ Returning cached admin customers (age: {cache_age:.1f}s)")
+                    return cached
+        
+        print(f"🔄 Generating fresh admin customers data...")
+        
         # Xây dựng query filter
         query = {}
         
@@ -2832,28 +3012,62 @@ async def get_all_customers(
         # Tính toán skip
         skip = (page - 1) * limit
         
-        # Lấy tổng số
-        total = await users_collection.count_documents(query)
+        # ========== AGGREGATION PIPELINE - TỐI ƯU ==========
         
-        # Lấy danh sách users
-        cursor = users_collection.find(query).skip(skip).limit(limit).sort("createdAt", -1)
-        users = await cursor.to_list(length=limit)
+        # Pipeline để lấy users với order statistics
+        pipeline = [
+            {"$match": query},
+            {"$sort": {"createdAt": -1}},
+            {"$skip": skip},
+            {"$limit": limit},
+            # Convert _id to string for lookup
+            {
+                "$addFields": {
+                    "user_id_str": {"$toString": "$_id"}
+                }
+            },
+            # Lookup orders
+            {
+                "$lookup": {
+                    "from": "orders",
+                    "localField": "user_id_str",
+                    "foreignField": "user_id",
+                    "as": "orders"
+                }
+            },
+            # Calculate statistics
+            {
+                "$project": {
+                    "_id": 1,
+                    "username": 1,
+                    "email": 1,
+                    "name": 1,
+                    "dateOfBirth": 1,
+                    "createdAt": 1,
+                    "role": 1,
+                    "emailVerified": 1,
+                    "avatar": 1,
+                    "phone": 1,
+                    "address": 1,
+                    "memberLevel": 1,
+                    "is_banned": 1,
+                    "total_orders": {"$size": "$orders"},
+                    "total_spent": {"$sum": "$orders.total_amount"}
+                }
+            }
+        ]
         
-        # Tính toán thống kê cho mỗi user
+        # Run count and aggregation in parallel
+        total_task = users_collection.count_documents(query)
+        users_task = users_collection.aggregate(pipeline).to_list(length=limit)
+        
+        total, users = await asyncio.gather(total_task, users_task)
+        
+        # Build result
         customers = []
         for user in users:
-            user_id = str(user["_id"])
-            
-            # Đếm số đơn hàng
-            total_orders = await orders_collection.count_documents({"user_id": user_id})
-            
-            # Tính tổng số tiền đã chi
-            orders_cursor = orders_collection.find({"user_id": user_id})
-            orders = await orders_cursor.to_list(length=None)
-            total_spent = sum(order.get("total_amount", 0) for order in orders)
-            
             customers.append(CustomerResponse(
-                id=user_id,
+                id=str(user["_id"]),
                 username=user["username"],
                 email=user["email"],
                 name=user["name"],
@@ -2866,18 +3080,29 @@ async def get_all_customers(
                 address=user.get("address", ""),
                 memberLevel=user.get("memberLevel", "bronze"),
                 is_banned=user.get("is_banned", False),
-                total_orders=total_orders,
-                total_spent=total_spent
+                total_orders=user.get("total_orders", 0),
+                total_spent=user.get("total_spent", 0)
             ))
         
-        return CustomerListResponse(
+        response = CustomerListResponse(
             success=True,
             customers=customers,
             total=total,
             page=page,
             limit=limit
         )
+        
+        # Cache response
+        if admin_customers_cache.get("data") is None:
+            admin_customers_cache["data"] = {}
+        admin_customers_cache["data"][cache_key] = response
+        admin_customers_cache["timestamp"] = now
+        
+        print(f"✅ Admin customers data cached")
+        return response
+        
     except Exception as e:
+        print(f"❌ Error in get_all_customers: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lỗi server: {str(e)}"
@@ -3379,8 +3604,23 @@ async def delete_coupon(coupon_id: str = Path(...)):
 
 @app.get("/api/admin/returns", response_model=ReturnListResponse)
 async def get_all_returns(status: Optional[str] = Query(None, description="Lọc theo trạng thái")):
-    """Lấy danh sách tất cả yêu cầu trả hàng (admin)"""
+    """Lấy danh sách tất cả yêu cầu trả hàng (admin) - VERSION TỐI ƯU"""
     try:
+        # Cache key
+        cache_key = f"returns_{status}"
+        now = datetime.now()
+        
+        # Check cache
+        if admin_returns_cache.get("data"):
+            cached = admin_returns_cache["data"].get(cache_key)
+            if cached:
+                cache_age = (now - admin_returns_cache["timestamp"]).total_seconds()
+                if cache_age < ADMIN_CACHE_DURATION:
+                    print(f"✅ Returning cached admin returns (age: {cache_age:.1f}s)")
+                    return cached
+        
+        print(f"🔄 Generating fresh admin returns data...")
+        
         query = {}
         if status and status != 'all':
             query["status"] = status
@@ -3409,12 +3649,23 @@ async def get_all_returns(status: Optional[str] = Query(None, description="Lọc
                 updated_at=ret.get("updated_at")
             ))
         
-        return ReturnListResponse(
+        response = ReturnListResponse(
             success=True,
             returns=returns,
             total=len(returns)
         )
+        
+        # Cache response
+        if admin_returns_cache.get("data") is None:
+            admin_returns_cache["data"] = {}
+        admin_returns_cache["data"][cache_key] = response
+        admin_returns_cache["timestamp"] = now
+        
+        print(f"✅ Admin returns data cached")
+        return response
+        
     except Exception as e:
+        print(f"❌ Error in get_all_returns: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lỗi server: {str(e)}"
@@ -3595,6 +3846,10 @@ async def update_return(return_id: str = Path(...), update_data: ReturnUpdate = 
                 {"_id": ObjectId(return_id)},
                 {"$set": update_fields}
             )
+            
+            # Invalidate admin returns cache
+            admin_returns_cache["data"] = None
+            print("🗑️ Admin returns cache invalidated")
         
         # Lấy lại return đã cập nhật
         updated_return = await returns_collection.find_one({"_id": ObjectId(return_id)})
@@ -3627,105 +3882,228 @@ async def update_return(return_id: str = Path(...), update_data: ReturnUpdate = 
 
 # ==================== DASHBOARD API ENDPOINTS ====================
 
+# Cache dashboard data trong 2 phút
+dashboard_cache = {"data": None, "timestamp": None}
+CACHE_DURATION = 120  # seconds
+
 @app.get("/api/admin/dashboard", response_model=DashboardResponse)
 async def get_dashboard_stats():
-    """Lấy thống kê dashboard cho admin"""
+    """Lấy thống kê dashboard cho admin - VERSION TỐI ƯU"""
     try:
-        # Tính toán ngày hôm nay và hôm qua
-        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        # Check cache
+        now = datetime.now()
+        if dashboard_cache["data"] and dashboard_cache["timestamp"]:
+            cache_age = (now - dashboard_cache["timestamp"]).total_seconds()
+            if cache_age < CACHE_DURATION:
+                print(f"✅ Returning cached dashboard data (age: {cache_age:.1f}s)")
+                return dashboard_cache["data"]
+        
+        print("🔄 Generating fresh dashboard data...")
+        
+        # Tính toán ngày
+        today = now.replace(hour=0, minute=0, second=0, microsecond=0)
         yesterday = today - timedelta(days=1)
         today_end = today + timedelta(days=1)
-        yesterday_end = yesterday + timedelta(days=1)
         
-        # 1. Doanh thu hôm nay và hôm qua
-        today_orders = await orders_collection.find({
-            "created_at": {
-                "$gte": today.isoformat(),
-                "$lt": today_end.isoformat()
+        # ========== AGGREGATION PIPELINE - TỐI ƯU ==========
+        
+        # 1. Doanh thu và đơn hàng - 1 query duy nhất cho tất cả
+        revenue_pipeline = [
+            {
+                "$match": {
+                    "created_at": {"$gte": (today - timedelta(days=14)).isoformat()},
+                    "status": {"$in": ["completed", "delivered", "processing", "shipped"]}
+                }
             },
-            "status": {"$in": ["completed", "delivered", "processing", "shipped"]}
-        }).to_list(length=None)
-        
-        yesterday_orders = await orders_collection.find({
-            "created_at": {
-                "$gte": yesterday.isoformat(),
-                "$lt": yesterday_end.isoformat()
+            {
+                "$project": {
+                    "total_amount": 1,
+                    "created_at": 1,
+                    "status": 1,
+                    "day": {
+                        "$substr": ["$created_at", 0, 10]  # Extract YYYY-MM-DD
+                    },
+                    "is_today": {
+                        "$eq": [
+                            {"$substr": ["$created_at", 0, 10]},
+                            today.strftime("%Y-%m-%d")
+                        ]
+                    },
+                    "is_yesterday": {
+                        "$eq": [
+                            {"$substr": ["$created_at", 0, 10]},
+                            yesterday.strftime("%Y-%m-%d")
+                        ]
+                    }
+                }
             },
-            "status": {"$in": ["completed", "delivered", "processing", "shipped"]}
-        }).to_list(length=None)
+            {
+                "$group": {
+                    "_id": "$day",
+                    "revenue": {"$sum": "$total_amount"},
+                    "orders_count": {"$sum": 1},
+                    "is_today": {"$first": "$is_today"},
+                    "is_yesterday": {"$first": "$is_yesterday"}
+                }
+            },
+            {"$sort": {"_id": 1}}
+        ]
         
-        today_revenue = sum(order.get("total_amount", 0) for order in today_orders)
-        yesterday_revenue = sum(order.get("total_amount", 0) for order in yesterday_orders)
+        # 2. Customers mới
+        customers_pipeline = [
+            {
+                "$match": {
+                    "createdAt": {"$gte": yesterday}
+                }
+            },
+            {
+                "$project": {
+                    "is_today": {
+                        "$gte": ["$createdAt", today]
+                    }
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$is_today",
+                    "count": {"$sum": 1}
+                }
+            }
+        ]
+        
+        # 3. Pending orders với customer info - 1 query với lookup
+        pending_orders_pipeline = [
+            {
+                "$match": {"status": "pending"}
+            },
+            {"$sort": {"created_at": -1}},
+            {"$limit": 5},
+            {
+                "$addFields": {
+                    "user_object_id": {"$toObjectId": "$user_id"}
+                }
+            },
+            {
+                "$lookup": {
+                    "from": "users",
+                    "localField": "user_object_id",
+                    "foreignField": "_id",
+                    "as": "user_info"
+                }
+            },
+            {
+                "$project": {
+                    "order_number": 1,
+                    "total_amount": 1,
+                    "created_at": 1,
+                    "status": 1,
+                    "items": 1,
+                    "customer_name": {
+                        "$ifNull": [
+                            {"$arrayElemAt": ["$user_info.name", 0]},
+                            {"$ifNull": [
+                                {"$arrayElemAt": ["$user_info.username", 0]},
+                                "Khách hàng"
+                            ]}
+                        ]
+                    }
+                }
+            }
+        ]
+        
+        # 4. Low stock products - với điều kiện trong query
+        low_stock_pipeline = [
+            {
+                "$match": {
+                    "status": "active",
+                    "$expr": {
+                        "$lte": [
+                            {"$ifNull": ["$inventory.quantity", 0]},
+                            {"$ifNull": ["$inventory.low_stock_threshold", 10]}
+                        ]
+                    }
+                }
+            },
+            {
+                "$project": {
+                    "name": 1,
+                    "sku": 1,
+                    "quantity": {"$ifNull": ["$inventory.quantity", 0]},
+                    "threshold": {"$ifNull": ["$inventory.low_stock_threshold", 10]}
+                }
+            },
+            {"$sort": {"quantity": 1}},
+            {"$limit": 10}
+        ]
+        
+        # ========== CHẠY TẤT CẢ QUERIES SONG SONG ==========
+        revenue_data, customers_data, pending_orders_data, low_stock_data = await asyncio.gather(
+            orders_collection.aggregate(revenue_pipeline).to_list(length=None),
+            users_collection.aggregate(customers_pipeline).to_list(length=None),
+            orders_collection.aggregate(pending_orders_pipeline).to_list(length=None),
+            products_collection.aggregate(low_stock_pipeline).to_list(length=None)
+        )
+        
+        # ========== XỬ LÝ KẾT QUẢ ==========
+        
+        # Revenue & Orders
+        today_revenue = 0
+        yesterday_revenue = 0
+        today_orders_count = 0
+        yesterday_orders_count = 0
+        revenue_chart_data = []
+        
+        for item in revenue_data:
+            revenue = item.get("revenue", 0)
+            orders = item.get("orders_count", 0)
+            
+            if item.get("is_today"):
+                today_revenue = revenue
+                today_orders_count = orders
+            if item.get("is_yesterday"):
+                yesterday_revenue = revenue
+                yesterday_orders_count = orders
+            
+            # Chart data (14 ngày gần nhất)
+            try:
+                date_str = datetime.strptime(item["_id"], "%Y-%m-%d").strftime("%d/%m")
+            except:
+                date_str = item["_id"][-5:]  # Fallback: lấy MM-DD
+            
+            revenue_chart_data.append(DashboardRevenueData(
+                date=date_str,
+                revenue=revenue
+            ))
+        
+        # Tính % thay đổi
         revenue_change = ((today_revenue - yesterday_revenue) / yesterday_revenue * 100) if yesterday_revenue > 0 else 0
-        
-        # 2. Số đơn hàng hôm nay và hôm qua
-        today_orders_count = len(today_orders)
-        yesterday_orders_count = len(yesterday_orders)
         orders_change = ((today_orders_count - yesterday_orders_count) / yesterday_orders_count * 100) if yesterday_orders_count > 0 else 0
         
-        # 3. Số khách hàng mới hôm nay và hôm qua
-        today_users = await users_collection.find({
-            "createdAt": {
-                "$gte": today,
-                "$lt": today_end
-            }
-        }).to_list(length=None)
+        # Customers
+        today_customers_count = 0
+        yesterday_customers_count = 0
+        for item in customers_data:
+            if item["_id"]:  # is_today = true
+                today_customers_count = item["count"]
+            else:
+                yesterday_customers_count = item["count"]
         
-        yesterday_users = await users_collection.find({
-            "createdAt": {
-                "$gte": yesterday,
-                "$lt": yesterday_end
-            }
-        }).to_list(length=None)
+        customers_change = ((today_customers_count - yesterday_customers_count) / yesterday_customers_count * 100) if yesterday_customers_count > 0 else 0
         
-        today_customers_count = len(today_users)
-        yesterday_customers_count = len(yesterday_users)
-        customers_change = ((today_customers_count - yesterday_customers_count) / yesterday_customers_count * 100) if yesterday_customers_count > 0 else -100
-        
-        # 4. Lượt truy cập (tạm thời dùng số đơn hàng, có thể thay bằng analytics sau)
-        # TODO: Implement proper page view tracking
-        today_visits = today_orders_count * 60  # Mock calculation
+        # Mock visits
+        today_visits = today_orders_count * 60
         yesterday_visits = yesterday_orders_count * 60
         visits_change = ((today_visits - yesterday_visits) / yesterday_visits * 100) if yesterday_visits > 0 else 0
         
-        # 5. Doanh thu 30 ngày qua (14 ngày gần nhất cho biểu đồ)
-        revenue_chart_data = []
-        for i in range(13, -1, -1):  # 14 ngày gần nhất
-            date = today - timedelta(days=i)
-            date_start = date.replace(hour=0, minute=0, second=0, microsecond=0)
-            date_end = date_start + timedelta(days=1)
-            
-            day_orders = await orders_collection.find({
-                "created_at": {
-                    "$gte": date_start.isoformat(),
-                    "$lt": date_end.isoformat()
-                },
-                "status": {"$in": ["completed", "delivered", "processing", "shipped"]}
-            }).to_list(length=None)
-            
-            day_revenue = sum(order.get("total_amount", 0) for order in day_orders)
-            revenue_chart_data.append(DashboardRevenueData(
-                date=date.strftime("%d/%m"),
-                revenue=day_revenue
-            ))
-        
-        # 6. Đơn hàng pending (5 đơn mới nhất)
-        pending_orders_list = await orders_collection.find({
-            "status": "pending"
-        }).sort("created_at", -1).limit(5).to_list(length=None)
-        
+        # Pending Orders
         pending_orders = []
-        for order in pending_orders_list:
-            # Lấy thông tin khách hàng
-            user = await users_collection.find_one({"_id": ObjectId(order.get("user_id"))})
-            customer_name = user.get("name", user.get("username", "Khách hàng")) if user else "Khách hàng"
+        for order in pending_orders_data:
+            created_at = datetime.fromisoformat(order.get("created_at", now.isoformat()))
+            time_diff = now - created_at
             
-            # Tính thời gian đã trôi qua
-            created_at = datetime.fromisoformat(order.get("created_at", datetime.now().isoformat()))
-            time_diff = datetime.now() - created_at
-            if time_diff.total_seconds() < 3600:  # Dưới 1 giờ
+            if time_diff.total_seconds() < 3600:
                 time_ago = f"{int(time_diff.total_seconds() / 60)} phút trước"
-            elif time_diff.total_seconds() < 86400:  # Dưới 1 ngày
+            elif time_diff.total_seconds() < 86400:
                 time_ago = f"{int(time_diff.total_seconds() / 3600)} giờ trước"
             else:
                 time_ago = f"{int(time_diff.total_seconds() / 86400)} ngày trước"
@@ -3733,38 +4111,26 @@ async def get_dashboard_stats():
             pending_orders.append(DashboardPendingOrder(
                 id=str(order["_id"]),
                 order_number=order.get("order_number", f"ORD{str(order['_id'])[:8].upper()}"),
-                customer_name=customer_name,
+                customer_name=order.get("customer_name", "Khách hàng"),
                 total_amount=order.get("total_amount", 0),
                 items_count=len(order.get("items", [])),
                 time_ago=time_ago,
                 status=order.get("status", "pending")
             ))
         
-        # 7. Sản phẩm sắp hết hàng
-        all_products = await products_collection.find({
-            "status": "active"
-        }).to_list(length=None)
+        # Low Stock Products
+        low_stock_products = [
+            DashboardLowStockProduct(
+                id=str(product["_id"]),
+                name=product.get("name", ""),
+                sku=product.get("sku", ""),
+                stock=product.get("quantity", 0),
+                threshold=product.get("threshold", 10)
+            )
+            for product in low_stock_data
+        ]
         
-        low_stock_products = []
-        for product in all_products:
-            inventory = product.get("inventory", {})
-            quantity = inventory.get("quantity", 0)
-            threshold = inventory.get("low_stock_threshold", 10)
-            
-            if quantity <= threshold:
-                low_stock_products.append(DashboardLowStockProduct(
-                    id=str(product["_id"]),
-                    name=product.get("name", ""),
-                    sku=product.get("sku", ""),
-                    stock=quantity,
-                    threshold=threshold
-                ))
-        
-        # Sắp xếp theo số lượng tồn kho (ít nhất trước)
-        low_stock_products.sort(key=lambda x: x.stock)
-        low_stock_products = low_stock_products[:10]  # Lấy 10 sản phẩm đầu tiên
-        
-        # Tạo KPIs
+        # KPIs
         kpis = [
             DashboardKPIMetric(
                 id="revenue",
@@ -3800,14 +4166,23 @@ async def get_dashboard_stats():
             )
         ]
         
-        return DashboardResponse(
+        response = DashboardResponse(
             success=True,
             kpis=kpis,
             revenue_chart=revenue_chart_data,
             pending_orders=pending_orders,
             low_stock_products=low_stock_products
         )
+        
+        # Cache response
+        dashboard_cache["data"] = response
+        dashboard_cache["timestamp"] = now
+        
+        print(f"✅ Dashboard data generated and cached")
+        return response
+        
     except Exception as e:
+        print(f"❌ Error in dashboard: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lỗi server: {str(e)}"
