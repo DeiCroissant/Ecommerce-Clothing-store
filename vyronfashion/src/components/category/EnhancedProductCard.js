@@ -352,15 +352,21 @@ const EnhancedProductCard = memo(function EnhancedProductCard({ product }) {
           )}
 
           {/* Product Image */}
-          <img
-            src={image}
-            alt={name}
-            loading="lazy"
-            onLoad={() => setImageLoaded(true)}
-            className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ${
-              imageLoaded ? 'opacity-100' : 'opacity-0'
-            }`}
-          />
+          {image ? (
+            <img
+              src={image}
+              alt={name}
+              loading="lazy"
+              onLoad={() => setImageLoaded(true)}
+              className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ${
+                imageLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-zinc-100 text-zinc-400">
+              No Image
+            </div>
+          )}
 
           {/* Badges */}
           <div className="absolute top-3 left-3 flex flex-col gap-2">
