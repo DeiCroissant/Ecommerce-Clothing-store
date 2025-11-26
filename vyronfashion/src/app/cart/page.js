@@ -18,6 +18,33 @@ import {
 } from '@heroicons/react/24/outline';
 import { HeartIcon } from '@heroicons/react/24/solid';
 import * as cartAPI from '@/lib/api/cart';
+
+// Helper to get proper hex color value
+const getHexColor = (color) => {
+  if (!color) return '#808080';
+  if (color.hex && color.hex.startsWith('#')) {
+    return color.hex;
+  }
+  const colorMap = {
+    'black': '#000000', 'đen': '#000000', 'den': '#000000',
+    'white': '#FFFFFF', 'trắng': '#FFFFFF', 'trang': '#FFFFFF',
+    'gray': '#9CA3AF', 'grey': '#9CA3AF', 'xám': '#9CA3AF', 'xam': '#9CA3AF',
+    'red': '#EF4444', 'đỏ': '#EF4444', 'do': '#EF4444',
+    'blue': '#3B82F6', 'xanh dương': '#3B82F6', 'xanh duong': '#3B82F6', 'xanh': '#3B82F6',
+    'green': '#22C55E', 'xanh lá': '#22C55E', 'xanh la': '#22C55E',
+    'yellow': '#EAB308', 'vàng': '#EAB308', 'vang': '#EAB308',
+    'pink': '#EC4899', 'hồng': '#EC4899', 'hong': '#EC4899',
+    'purple': '#A855F7', 'tím': '#A855F7', 'tim': '#A855F7',
+    'orange': '#F97316', 'cam': '#F97316',
+    'brown': '#92400E', 'nâu': '#92400E', 'nau': '#92400E',
+    'beige': '#D4B896', 'be': '#D4B896', 'kem': '#D4B896',
+    'navy': '#1E3A8A',
+    'olive': '#6B8E23',
+    'khaki': '#C3B091',
+  };
+  const slug = (color.slug || color.name || '').toLowerCase().trim();
+  return colorMap[slug] || color.hex || '#808080';
+};
 import * as productAPI from '@/lib/api/products';
 import * as addressAPI from '@/lib/api/addresses';
 import { validateCoupon } from '@/lib/api/adminCoupons';
@@ -842,9 +869,9 @@ function CartItemCard({ item, onQuantityChange, onDelete, onSaveForLater, isUpda
                 <span className="inline-flex items-center gap-1 text-xs bg-gray-100 px-2 py-1 rounded">
                   <span 
                     className="w-3 h-3 rounded-full border border-gray-300"
-                    style={{ backgroundColor: item.color.hex }}
+                    style={{ backgroundColor: getHexColor(item.color) }}
                   />
-                  {item.color.name}
+                  {item.color?.name || item.color}
                 </span>
                 <span className="text-xs bg-gray-100 px-2 py-1 rounded">
                   Size: {item.size}

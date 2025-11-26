@@ -16,6 +16,7 @@ import * as productAPI from '@/lib/api/products'
 import CategoryFormModal from '@/components/admin/categories/CategoryFormModal'
 import ProductFormModal from '@/components/admin/products/ProductFormModal'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { getImageUrl } from '@/lib/imageHelper'
 
 export default function CategoryDetailPage() {
   const params = useParams()
@@ -178,6 +179,11 @@ export default function CategoryDetailPage() {
           }
         }
         
+        // Reload subcategories để cập nhật product_count
+        categoryAPI.getSubCategories(categoryId).then(subCategoriesData => {
+          setSubCategories(subCategoriesData || [])
+        }).catch(err => console.error('Error reloading subcategories:', err))
+        
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('showToast', { 
             detail: { message: 'Đã xóa sản phẩm thành công!', type: 'success', duration: 3000 } 
@@ -234,6 +240,8 @@ export default function CategoryDetailPage() {
 
   const handleSaveProduct = async (productData) => {
     try {
+      console.log('💾 handleSaveProduct called with:', JSON.stringify(productData.variants, null, 2))
+      
       // Set category cho sản phẩm
       const categoryForProduct = selectedSubCategoryId 
         ? subCategories.find(c => c.id === selectedSubCategoryId)
@@ -246,6 +254,8 @@ export default function CategoryDetailPage() {
           slug: categoryForProduct.slug
         }
       }
+      
+      console.log('📦 Product with category:', JSON.stringify(productWithCategory.variants, null, 2))
       
       const isUpdate = !!selectedProduct
       
@@ -270,21 +280,36 @@ export default function CategoryDetailPage() {
         }));
       }
       
-      // Reload products trong background (không block UI)
+      // Reload products và subcategories trong background
       if (selectedSubCategoryId && viewMode === 'products') {
         const subCat = subCategories.find(c => c.id === selectedSubCategoryId)
         if (subCat) {
-          // Use Promise without await để không block
+          // Reload products
           productAPI.getProducts({
             category_slug: subCat.slug,
             status: 'active'
           }).then(response => {
-            setProducts(response.products || [])
+            let productsArray = []
+            if (Array.isArray(response)) {
+              productsArray = response
+            } else if (response?.products && Array.isArray(response.products)) {
+              productsArray = response.products
+            } else if (response?.data && Array.isArray(response.data)) {
+              productsArray = response.data
+            }
+            setProducts(productsArray)
           }).catch(err => {
             console.error('Error reloading products:', err)
           })
         }
       }
+      
+      // Reload subcategories để cập nhật số lượng sản phẩm
+      categoryAPI.getSubCategories(categoryId).then(subCategoriesData => {
+        setSubCategories(subCategoriesData || [])
+      }).catch(err => {
+        console.error('Error reloading subcategories:', err)
+      })
       
     } catch (error) {
       console.error('Error saving product:', error)
@@ -544,7 +569,7 @@ export default function CategoryDetailPage() {
                               height: '48px',
                               borderRadius: 'var(--radius-base)',
                               backgroundColor: 'var(--neutral-100)',
-                              backgroundImage: `url(${product.image})`,
+                              backgroundImage: `url(${getImageUrl(product.image)})`,
                               backgroundSize: 'cover',
                               backgroundPosition: 'center'
                             }} />
@@ -575,9 +600,18 @@ export default function CategoryDetailPage() {
                             <button 
                               className="admin-btn admin-btn-sm admin-btn-ghost"
                               title="Chỉnh sửa"
-                              onClick={() => {
-                                setSelectedProduct(product)
-                                setShowProductForm(true)
+                              onClick={async () => {
+                                // Fetch full product data (including color images)
+                                try {
+                                  const fullProduct = await productAPI.getProductById(product.id)
+                                  setSelectedProduct(fullProduct)
+                                  setShowProductForm(true)
+                                } catch (error) {
+                                  console.error('Error loading product:', error)
+                                  // Fallback to list product if API fails
+                                  setSelectedProduct(product)
+                                  setShowProductForm(true)
+                                }
                               }}
                             >
                               <Edit size={16} />

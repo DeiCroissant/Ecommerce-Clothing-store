@@ -9,7 +9,7 @@ import { API_BASE_URL } from './config';
 export const getImageUrl = (imagePath) => {
   // Nếu không có path, return placeholder
   if (!imagePath) {
-    return '/images/placeholders/product-placeholder.jpg';
+    return '/images/placeholders/product-placeholder.svg';
   }
 
   // Nếu đã là full URL (http/https), return trực tiếp
@@ -49,7 +49,7 @@ export const getImageUrl = (imagePath) => {
  */
 export const getProductImage = (product, colorSlug = null) => {
   if (!product) {
-    return '/images/placeholders/product-placeholder.jpg';
+    return '/images/placeholders/product-placeholder.svg';
   }
 
   // Nếu có colorSlug, tìm ảnh của màu đó
@@ -106,7 +106,7 @@ export const getAllProductImages = (product) => {
     });
   }
 
-  return images.length > 0 ? images : ['/images/placeholders/product-placeholder.jpg'];
+  return images.length > 0 ? images : ['/images/placeholders/product-placeholder.svg'];
 };
 
 /**
@@ -131,6 +131,6 @@ export const preloadImages = (imageUrls) => {
  */
 export const handleImageError = (e) => {
   console.warn('Image load failed:', e.target.src);
-  e.target.src = '/images/placeholders/product-placeholder.jpg';
+  e.target.src = '/images/placeholders/product-placeholder.svg';
   e.target.onerror = null; // Prevent infinite loop
 };

@@ -88,7 +88,7 @@ export default function MiniCartSlideIn({ isOpen, onClose, items = [] }) {
                     style={{ animationDelay: `${index * 50}ms` }}
                   >
                     <img
-                      src={getImageUrl(item.product_image || item.image || '/images/placeholders/product-placeholder.jpg')}
+                      src={getImageUrl(item.product_image || item.image || '/images/placeholders/product-placeholder.svg')}
                       alt={item.product_name || item.name}
                       className="w-20 h-20 object-cover rounded-lg"
                       onError={handleImageError}

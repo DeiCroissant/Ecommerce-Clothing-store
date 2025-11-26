@@ -16,6 +16,7 @@ import {
 import { formatCurrency } from '@/lib/formatCurrency'
 import * as productAPI from '@/lib/api/products'
 import ProductFormModal from '@/components/admin/products/ProductFormModal'
+import { getImageUrl } from '@/lib/imageHelper'
 
 export default function AdminProductsPage() {
   const [searchQuery, setSearchQuery] = useState('')
@@ -174,7 +175,7 @@ export default function AdminProductsPage() {
                           height: '48px',
                           borderRadius: 'var(--radius-base)',
                           backgroundColor: 'var(--neutral-100)',
-                          backgroundImage: `url(${product.image})`,
+                          backgroundImage: `url(${getImageUrl(product.image)})`,
                           backgroundSize: 'cover',
                           backgroundPosition: 'center'
                         }} />
@@ -314,7 +315,7 @@ export default function AdminProductsPage() {
                             height: '48px',
                             borderRadius: 'var(--radius-base)',
                             backgroundColor: 'var(--neutral-100)',
-                            backgroundImage: `url(${product.image})`,
+                            backgroundImage: `url(${getImageUrl(product.image)})`,
                             backgroundSize: 'cover',
                             backgroundPosition: 'center'
                           }} />

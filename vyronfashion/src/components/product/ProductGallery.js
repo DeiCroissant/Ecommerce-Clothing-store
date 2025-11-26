@@ -70,10 +70,10 @@ export default function ProductGallery({ images, productName, onImageClick }) {
   };
 
   return (
-    <div className="flex gap-4">
+    <div className="flex gap-4 w-full">
       {/* Thumbnail Column - Desktop */}
-      <div className="hidden md:flex flex-col gap-2 w-20">
-        {normalizedImages.map((image, index) => {
+      <div className="hidden md:flex flex-col gap-2.5 w-20 lg:w-24 flex-shrink-0">
+        {normalizedImages.slice(0, 6).map((image, index) => {
           // Kiểm tra URL có hợp lệ không (bao gồm base64)
           const isValidUrl = image.url && (
             image.url.startsWith('/') || 
@@ -90,10 +90,10 @@ export default function ProductGallery({ images, productName, onImageClick }) {
                 e.stopPropagation();
                 handleImageClick(index);
               }}
-              className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${
+              className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all hover:scale-105 ${
                 selectedImage === index
-                  ? 'border-blue-600 shadow-md'
-                  : 'border-gray-200 hover:border-gray-300'
+                  ? 'border-blue-600 shadow-lg ring-2 ring-blue-200'
+                  : 'border-gray-200 hover:border-gray-400'
               }`}
               title={image.colorSlug ? `Thuộc màu: ${image.colorSlug}` : ''}
             >
@@ -110,7 +110,7 @@ export default function ProductGallery({ images, productName, onImageClick }) {
                     alt={image.alt}
                     fill
                     className="object-cover"
-                    sizes="80px"
+                    sizes="96px"
                     unoptimized={image.url.startsWith('http') && !image.url.includes('localhost')}
                   />
                 )

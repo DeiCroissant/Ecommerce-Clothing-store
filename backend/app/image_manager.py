@@ -225,7 +225,12 @@ class ImageManager:
                 
                 # Lưu với compression
                 output = io.BytesIO()
-                save_format = 'JPEG' if ext in {'.jpg', '.jpeg'} else 'PNG'
+                if ext in {'.jpg', '.jpeg'}:
+                    save_format = 'JPEG'
+                elif ext == '.webp':
+                    save_format = 'WEBP'
+                else:
+                    save_format = 'PNG'
                 img.save(output, format=save_format, quality=85, optimize=True)
                 file_content = output.getvalue()
                 
@@ -364,9 +369,9 @@ def delete_image(image_url: str) -> bool:
     return image_manager.delete_image(image_url)
 
 
-def save_uploaded_file(file_content: bytes, original_filename: str, product_id: str = None) -> Tuple[str, dict]:
+def save_uploaded_file(file_content: bytes, original_filename: str, product_id: str = None, optimize: bool = True) -> Tuple[str, dict]:
     """Lưu file upload"""
-    return image_manager.save_uploaded_file(file_content, original_filename, product_id)
+    return image_manager.save_uploaded_file(file_content, original_filename, product_id, optimize)
 
 
 def cleanup_unused_images(products: list) -> dict:

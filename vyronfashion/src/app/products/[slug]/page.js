@@ -17,6 +17,7 @@ import * as reviewAPI from '@/lib/api/reviews';
 import * as cartAPI from '@/lib/api/cart';
 import * as wishlistAPI from '@/lib/api/wishlist';
 import ProductReviews from '@/components/product/ProductReviews';
+import { getImageUrl } from '@/lib/imageHelper';
 
 // Mock data - sẽ thay thế bằng API call sau
 export default function ProductDetailPage({ params }) {
@@ -175,6 +176,10 @@ export default function ProductDetailPage({ params }) {
   // Each image includes metadata about which color it belongs to (if any)
   const productImages = product 
     ? (() => {
+        console.log('🖼️ Building product images...')
+        console.log('   Product variants:', product.variants)
+        console.log('   Colors:', product.variants?.colors)
+        
         const imagesMap = new Map(); // Use Map to avoid duplicates by URL
         const selectedColorImages = [];
         const otherImages = [];
@@ -182,15 +187,17 @@ export default function ProductDetailPage({ params }) {
         // 1. Collect selected color images first (if color is selected)
         if (selectedVariant.color && product.variants?.colors) {
           const selectedColorObj = product.variants.colors.find(c => c.slug === selectedVariant.color);
+          console.log('   Selected color:', selectedColorObj)
           if (selectedColorObj && selectedColorObj.images && selectedColorObj.images.length > 0) {
             selectedColorObj.images.forEach((img, index) => {
-              if (!imagesMap.has(img)) {
+              const imgUrl = getImageUrl(img);
+              if (!imagesMap.has(imgUrl)) {
                 const imageData = {
-                  url: img,
+                  url: imgUrl,
                   alt: `${product.name} - ${selectedColorObj.name} - ${index + 1}`,
                   colorSlug: selectedColorObj.slug
                 };
-                imagesMap.set(img, imageData);
+                imagesMap.set(imgUrl, imageData);
                 selectedColorImages.push(imageData);
               }
             });
@@ -198,26 +205,30 @@ export default function ProductDetailPage({ params }) {
         }
         
         // 2. Add main image (if exists and not duplicate)
-        if (product.image && !imagesMap.has(product.image)) {
-          const imageData = {
-            url: product.image,
-            alt: product.name,
-            colorSlug: null
-          };
-          imagesMap.set(product.image, imageData);
-          otherImages.push(imageData);
+        if (product.image) {
+          const mainImgUrl = getImageUrl(product.image);
+          if (!imagesMap.has(mainImgUrl)) {
+            const imageData = {
+              url: mainImgUrl,
+              alt: product.name,
+              colorSlug: null
+            };
+            imagesMap.set(mainImgUrl, imageData);
+            otherImages.push(imageData);
+          }
         }
         
         // 3. Add gallery images (if not duplicate)
         if (product.images && product.images.length > 0) {
           product.images.forEach(img => {
-            if (!imagesMap.has(img)) {
+            const imgUrl = getImageUrl(img);
+            if (!imagesMap.has(imgUrl)) {
               const imageData = {
-                url: img,
+                url: imgUrl,
                 alt: `${product.name} - Gallery`,
                 colorSlug: null
               };
-              imagesMap.set(img, imageData);
+              imagesMap.set(imgUrl, imageData);
               otherImages.push(imageData);
             }
           });
@@ -225,19 +236,22 @@ export default function ProductDetailPage({ params }) {
         
         // 4. Add other color variant images (if not duplicate)
         if (product.variants?.colors && product.variants.colors.length > 0) {
+          console.log('   Adding color images from', product.variants.colors.length, 'colors')
           product.variants.colors.forEach(color => {
+            console.log('   Color:', color.name, '- images:', color.images)
             // Skip selected color (already added)
             if (color.slug === selectedVariant.color) return;
             
             if (color.images && color.images.length > 0) {
               color.images.forEach((img, index) => {
-                if (!imagesMap.has(img)) {
+                const imgUrl = getImageUrl(img);
+                if (!imagesMap.has(imgUrl)) {
                   const imageData = {
-                    url: img,
+                    url: imgUrl,
                     alt: `${product.name} - ${color.name} - ${index + 1}`,
                     colorSlug: color.slug
                   };
-                  imagesMap.set(img, imageData);
+                  imagesMap.set(imgUrl, imageData);
                   otherImages.push(imageData);
                 }
               });
@@ -247,12 +261,14 @@ export default function ProductDetailPage({ params }) {
         
         // Combine: selected color images first, then others
         const images = [...selectedColorImages, ...otherImages];
+        console.log('   Total images:', images.length)
+        console.log('   Final images:', images)
         
         // Nếu không có ảnh nào, dùng placeholder thay vì mock images
         if (images.length === 0) {
           console.warn('No product images found for slug:', slug);
           return [{
-            url: product.image || '/images/placeholders/product-placeholder.jpg',
+            url: getImageUrl(product.image) || '/images/placeholders/product-placeholder.svg',
             alt: product.name || 'Product image',
             colorSlug: null
           }];
@@ -581,17 +597,17 @@ export default function ProductDetailPage({ params }) {
     <div className="min-h-screen bg-white">
       {/* Main Product Section */}
       <div className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left Column - Gallery (58%) */}
-          <div className="lg:col-span-7">
+        <div className="grid grid-cols-1 lg:grid-cols-[55%_45%] xl:grid-cols-[52%_48%] gap-6 lg:gap-8">
+          {/* Left Column - Gallery */}
+          <div className="flex justify-center lg:justify-end">
             <ProductGallery 
               images={productImages} 
               productName={product.name}
             />
           </div>
 
-          {/* Right Column - Product Info & Actions (42%) */}
-          <div className="lg:col-span-5">
+          {/* Right Column - Product Info & Actions */}
+          <div className="lg:max-w-md xl:max-w-lg">
             <div className="sticky top-24 space-y-6">
               {/* Product Info */}
               <ProductInfo product={product} />

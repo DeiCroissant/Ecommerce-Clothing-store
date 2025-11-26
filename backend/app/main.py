@@ -169,6 +169,64 @@ def remove_accents(input_str):
     import unicodedata
     return ''.join((c for c in unicodedata.normalize('NFKD', input_str) if not unicodedata.combining(c)))
 
+# Color name to hex mapping (hỗ trợ cả có dấu và không dấu)
+COLOR_HEX_MAP = {
+    # Black / Đen
+    'black': '#000000', 'đen': '#000000', 'den': '#000000',
+    # White / Trắng
+    'white': '#FFFFFF', 'trắng': '#FFFFFF', 'trang': '#FFFFFF',
+    # Gray / Xám
+    'gray': '#9CA3AF', 'grey': '#9CA3AF', 'xám': '#9CA3AF', 'xam': '#9CA3AF',
+    # Red / Đỏ
+    'red': '#EF4444', 'đỏ': '#EF4444', 'do': '#EF4444',
+    # Blue / Xanh dương
+    'blue': '#3B82F6', 'xanh dương': '#3B82F6', 'xanh duong': '#3B82F6', 'xanh': '#3B82F6',
+    # Green / Xanh lá
+    'green': '#22C55E', 'xanh lá': '#22C55E', 'xanh la': '#22C55E',
+    # Yellow / Vàng
+    'yellow': '#EAB308', 'vàng': '#EAB308', 'vang': '#EAB308',
+    # Pink / Hồng
+    'pink': '#EC4899', 'hồng': '#EC4899', 'hong': '#EC4899',
+    # Purple / Tím
+    'purple': '#A855F7', 'tím': '#A855F7', 'tim': '#A855F7',
+    # Orange / Cam
+    'orange': '#F97316', 'cam': '#F97316',
+    # Brown / Nâu
+    'brown': '#92400E', 'nâu': '#92400E', 'nau': '#92400E',
+    # Beige / Be / Kem
+    'beige': '#D4B896', 'be': '#D4B896', 'kem': '#D4B896',
+    # Navy
+    'navy': '#1E3A8A',
+    # Olive
+    'olive': '#6B8E23',
+    # Khaki
+    'khaki': '#C3B091',
+}
+
+def get_hex_from_color_name(color_name: str, color_slug: str = None) -> str:
+    """Lấy hex code từ tên màu hoặc slug"""
+    if not color_name and not color_slug:
+        return '#808080'  # Default gray
+    
+    # Thử với slug trước (thường không dấu)
+    if color_slug:
+        slug_lower = color_slug.lower().strip()
+        if slug_lower in COLOR_HEX_MAP:
+            return COLOR_HEX_MAP[slug_lower]
+    
+    # Thử với tên màu
+    if color_name:
+        name_lower = color_name.lower().strip()
+        if name_lower in COLOR_HEX_MAP:
+            return COLOR_HEX_MAP[name_lower]
+        
+        # Thử remove accents và tìm lại
+        name_no_accent = remove_accents(name_lower)
+        if name_no_accent in COLOR_HEX_MAP:
+            return COLOR_HEX_MAP[name_no_accent]
+    
+    return '#808080'  # Default gray nếu không tìm thấy
+
 def normalize_variants(variants_data):
     """Normalize variants data to ensure proper structure"""
     if not variants_data:
@@ -190,10 +248,19 @@ def normalize_variants(variants_data):
             elif not isinstance(images, list):
                 images = []
             
+            # Lấy hex: ưu tiên hex có sẵn, nếu không thì generate từ tên/slug
+            color_name = color.get("name", "")
+            color_slug = color.get("slug", "")
+            color_hex = color.get("hex", "")
+            
+            # Nếu hex không hợp lệ (rỗng hoặc không bắt đầu bằng #), generate từ tên
+            if not color_hex or not color_hex.startswith('#'):
+                color_hex = get_hex_from_color_name(color_name, color_slug)
+            
             normalized_colors.append({
-                "name": color.get("name", ""),
-                "slug": color.get("slug", ""),
-                "hex": color.get("hex", "#000000"),
+                "name": color_name,
+                "slug": color_slug,
+                "hex": color_hex,
                 "available": color.get("available", True),
                 "images": images  # Preserve images array
             })
@@ -1265,8 +1332,10 @@ async def get_products(
             "short_description": 1,
             "image": 1,  # Chỉ ảnh chính
             # "images": 0,  # Không lấy gallery trong list view
-            "variants.colors.name": 1,  # Chỉ lấy tên màu, không lấy ảnh
-            "variants.colors.value": 1,
+            "variants.colors.name": 1,  # Lấy tên màu
+            "variants.colors.slug": 1,  # Lấy slug màu
+            "variants.colors.hex": 1,   # Lấy hex màu
+            "variants.colors.available": 1,  # Lấy trạng thái available
             "variants.sizes": 1,
             "inventory": 1,
             "status": 1,
@@ -1281,22 +1350,38 @@ async def get_products(
         cursor = products_collection.find(query, projection).sort(list(sort_dict.items())).skip(skip).limit(limit)
         products = await cursor.to_list(length=None)
         
+        # Check if this is a single product request (by slug)
+        is_single_product_request = slug is not None and limit == 1
+        print(f"📌 is_single_product_request: {is_single_product_request}, slug: {slug}, limit: {limit}")
+        
         result = []
         for product in products:
-            # Optimize variants for list view - remove color images
+            # Get variants from database (full data)
             variants = product.get("variants", {})
-            if isinstance(variants, dict) and "colors" in variants:
-                colors = variants.get("colors", [])
-                if isinstance(colors, list):
-                    # Remove images from colors in list view
-                    variants["colors"] = [
-                        {
-                            "name": c.get("name", ""),
-                            "value": c.get("value", ""),
-                            "images": []  # Empty images array for list view
-                        }
-                        for c in colors
-                    ]
+            
+            # Debug log for single product
+            if is_single_product_request:
+                print(f"📸 Single product variants from DB: {variants}")
+            
+            # Only remove color images for list view (not single product)
+            if not is_single_product_request:
+                if isinstance(variants, dict) and "colors" in variants:
+                    colors = variants.get("colors", [])
+                    if isinstance(colors, list):
+                        # Remove images from colors in list view
+                        variants["colors"] = [
+                            {
+                                "name": c.get("name", ""),
+                                "slug": c.get("slug", ""),
+                                "hex": c.get("hex", "#000000"),
+                                "available": c.get("available", True),
+                                "images": []  # Empty images array for list view
+                            }
+                            for c in colors
+                        ]
+            
+            # For single product, include full data (gallery images, color images)
+            product_images = product.get("images", []) if is_single_product_request else []
             
             result.append(ProductResponse(
                 id=str(product["_id"]),
@@ -1312,8 +1397,8 @@ async def get_products(
                     "currency": "VND"
                 }),
                 short_description=product.get("short_description", ""),
-                image=product.get("image", ""),  # Chỉ ảnh chính
-                images=[],  # Empty array cho list view - tiết kiệm bandwidth
+                image=product.get("image", ""),
+                images=product_images,  # Full images for single product, empty for list view
                 variants=normalize_variants(variants),
                 inventory=product.get("inventory", {
                     "in_stock": True,
@@ -1561,6 +1646,9 @@ async def create_product(product_data: ProductCreate):
         # Convert and validate variants
         variants_dict = product_data.variants.dict()
         
+        print(f"📦 Variants data received:")
+        print(f"   Raw variants: {variants_dict}")
+        
         # Ensure each color has images field
         if 'colors' in variants_dict:
             for idx, color in enumerate(variants_dict['colors']):
@@ -1571,7 +1659,7 @@ async def create_product(product_data: ProductCreate):
                     img for img in color.get('images', [])
                     if img and isinstance(img, str) and not img.startswith('blob:')
                 ]
-                print(f"   Color {idx}: {color.get('name', 'N/A')} - {len(color['images'])} images")
+                print(f"   Color {idx}: {color.get('name', 'N/A')} - {len(color['images'])} images: {color['images']}")
         
         new_product = {
             "name": product_data.name,
@@ -4877,6 +4965,11 @@ async def migrate_color_images():
 
 # ==================== STATIC FILES - SERVE ẢNH SẢN PHẨM ====================
 # Mount CUỐI CÙNG để không override các route khác
+# Đảm bảo thư mục uploads tồn tại khi khởi động
+import pathlib
+uploads_dir = pathlib.Path("uploads/products")
+uploads_dir.mkdir(parents=True, exist_ok=True)
+
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 if __name__ == "__main__":
