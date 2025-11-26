@@ -98,6 +98,18 @@ import asyncio
 # Load environment variables
 load_dotenv()
 
+# ==================== HELPER FUNCTIONS ====================
+
+def safe_datetime_to_str(dt):
+    """Convert datetime to ISO format string safely"""
+    if dt is None:
+        return None
+    if isinstance(dt, datetime):
+        return dt.isoformat()
+    if isinstance(dt, str):
+        return dt
+    return str(dt)
+
 # VietQR + Casso payment integration
 import app.payment_vietqr as payment_integration
 import app.schemas as schemas
@@ -1203,7 +1215,7 @@ async def delete_category(category_id: str = Path(...)):
 @app.get("/api/products", response_model=ProductListResponse)
 async def get_products(
     category_slug: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
+    product_status: Optional[str] = Query(None, alias="status"),  # Support both 'status' and 'product_status'
     slug: Optional[str] = Query(None),
     sizes: Optional[str] = Query(None),  # Comma-separated sizes
     colors: Optional[str] = Query(None),  # Comma-separated color slugs
@@ -1217,7 +1229,7 @@ async def get_products(
     """
     Lấy danh sách sản phẩm với filter hỗ trợ - VERSION TỐI ƯU VỚI CACHE
     - category_slug: Lọc theo category slug
-    - status: Lọc theo trạng thái (active/inactive)
+    - status (hoặc product_status): Lọc theo trạng thái (active/inactive)
     - slug: Tìm sản phẩm theo slug
     - sizes: Filter theo sizes (S,M,L,XL)
     - colors: Filter theo màu sắc (slugs)
@@ -1229,7 +1241,7 @@ async def get_products(
     """
     try:
         # Cache key based on all parameters
-        cache_key = f"{category_slug}_{status}_{slug}_{sizes}_{colors}_{brands}_{price_min}_{price_max}_{page}_{limit}_{sort}"
+        cache_key = f"{category_slug}_{product_status}_{slug}_{sizes}_{colors}_{brands}_{price_min}_{price_max}_{page}_{limit}_{sort}"
         now = datetime.now()
         
         # Check cache (2 minutes for products - frequently updated)
@@ -1268,8 +1280,8 @@ async def get_products(
         elif category_slug:
             query["category.slug"] = category_slug
         
-        if status:
-            query["status"] = status
+        if product_status:
+            query["status"] = product_status
         
         # Filter by sizes
         if sizes:
@@ -1415,8 +1427,8 @@ async def get_products(
                 rating=product.get("rating", {"average": 0.0, "count": 0}),
                 wishlist_count=product.get("wishlist_count", 0),
                 sold_count=product.get("sold_count", 0),
-                created_at=product.get("created_at"),
-                updated_at=product.get("updated_at")
+                created_at=safe_datetime_to_str(product.get("created_at")),
+                updated_at=safe_datetime_to_str(product.get("updated_at"))
             ))
         
         response = ProductListResponse(
@@ -1647,8 +1659,8 @@ async def get_product(product_id: str = Path(...)):
             rating=product.get("rating", {"average": 0.0, "count": 0}),
             wishlist_count=product.get("wishlist_count", 0),
             sold_count=product.get("sold_count", 0),
-            created_at=product.get("created_at"),
-            updated_at=product.get("updated_at")
+            created_at=safe_datetime_to_str(product.get("created_at")),
+            updated_at=safe_datetime_to_str(product.get("updated_at"))
         )
     except HTTPException:
         raise
@@ -1809,7 +1821,7 @@ async def update_product(product_id: str = Path(...), product_data: ProductUpdat
         if product_data.rating is not None:
             update_data["rating"] = product_data.rating.dict()
         
-        update_data["updated_at"] = datetime.now().isoformat()
+        update_data["updated_at"] = datetime.now()  # Lưu datetime object
         
         await products_collection.update_one(
             {"_id": ObjectId(product_id)},
@@ -1844,8 +1856,8 @@ async def update_product(product_id: str = Path(...), product_data: ProductUpdat
             rating=updated.get("rating", {"average": 0.0, "count": 0}),
             wishlist_count=updated.get("wishlist_count", 0),
             sold_count=updated.get("sold_count", 0),
-            created_at=updated.get("created_at"),
-            updated_at=updated.get("updated_at")
+            created_at=safe_datetime_to_str(updated.get("created_at")),
+            updated_at=safe_datetime_to_str(updated.get("updated_at"))
         )
     except HTTPException:
         raise
@@ -1902,8 +1914,8 @@ async def delete_product(product_id: str = Path(...)):
             rating=product.get("rating", {"average": 0.0, "count": 0}),
             wishlist_count=product.get("wishlist_count", 0),
             sold_count=product.get("sold_count", 0),
-            created_at=product.get("created_at"),
-            updated_at=product.get("updated_at")
+            created_at=safe_datetime_to_str(product.get("created_at")),
+            updated_at=safe_datetime_to_str(product.get("updated_at"))
         )
         
         return ProductDeleteResponse(
@@ -2169,8 +2181,8 @@ async def get_wishlist_products(user_id: str = Path(...)):
                         rating=product.get("rating", {"average": 0.0, "count": 0}),
                         wishlist_count=product.get("wishlist_count", 0),
                         sold_count=product.get("sold_count", 0),
-                        created_at=product.get("created_at"),
-                        updated_at=product.get("updated_at")
+                        created_at=safe_datetime_to_str(product.get("created_at")),
+                        updated_at=safe_datetime_to_str(product.get("updated_at"))
                     ))
             except:
                 continue
