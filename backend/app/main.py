@@ -1,11 +1,11 @@
-from fastapi import FastAPI, HTTPException, status, Path, Response, Query, Body, Request, UploadFile, File
+from fastapi import FastAPI, HTTPException, status, Path, Response, Query, Body, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from typing import Optional
 import mimetypes
 from app.database import users_collection, categories_collection, products_collection, reviews_collection, orders_collection, cart_collection, addresses_collection, coupons_collection, returns_collection, settings_collection, close_db
-from app.image_manager import ImageManager, delete_product_images, save_uploaded_file, cleanup_unused_images, get_storage_stats
+from app.cloudinary_uploader import upload_image as cloudinary_upload, upload_multiple_images as cloudinary_upload_multiple, delete_product_images as cloudinary_delete_product, is_cloudinary_configured
 from app.schemas import (
     UserCreate,
     UserLogin,
@@ -1319,40 +1319,46 @@ async def get_products(
         total = await products_collection.count_documents(query)
         total_pages = (total + limit - 1) // limit
         
+        # Check if this is a single product request (by slug)
+        is_single_product_request = slug is not None and limit == 1
+        print(f"📌 is_single_product_request: {is_single_product_request}, slug: {slug}, limit: {limit}")
+        
         # Projection - chỉ lấy các field cần thiết để giảm data transfer
         # List view chỉ cần ảnh chính, không cần gallery và color images
-        projection = {
-            "_id": 1,
-            "name": 1,
-            "slug": 1,
-            "sku": 1,
-            "brand": 1,
-            "category": 1,
-            "pricing": 1,
-            "short_description": 1,
-            "image": 1,  # Chỉ ảnh chính
-            # "images": 0,  # Không lấy gallery trong list view
-            "variants.colors.name": 1,  # Lấy tên màu
-            "variants.colors.slug": 1,  # Lấy slug màu
-            "variants.colors.hex": 1,   # Lấy hex màu
-            "variants.colors.available": 1,  # Lấy trạng thái available
-            "variants.sizes": 1,
-            "inventory": 1,
-            "status": 1,
-            "rating": 1,
-            "wishlist_count": 1,
-            "sold_count": 1,
-            "created_at": 1,
-            "updated_at": 1
-        }
+        if is_single_product_request:
+            # Single product: lấy full data (bao gồm images, color images)
+            projection = None  # None = lấy tất cả fields
+        else:
+            # List view: chỉ lấy các fields cần thiết
+            projection = {
+                "_id": 1,
+                "name": 1,
+                "slug": 1,
+                "sku": 1,
+                "brand": 1,
+                "category": 1,
+                "pricing": 1,
+                "short_description": 1,
+                "image": 1,  # Chỉ ảnh chính
+                # "images": 0,  # Không lấy gallery trong list view
+                "variants.colors.name": 1,  # Lấy tên màu
+                "variants.colors.slug": 1,  # Lấy slug màu
+                "variants.colors.hex": 1,   # Lấy hex màu
+                "variants.colors.available": 1,  # Lấy trạng thái available
+                "variants.colors.images": 1,  # Lấy ảnh màu cho hover preview
+                "variants.sizes": 1,
+                "inventory": 1,
+                "status": 1,
+                "rating": 1,
+                "wishlist_count": 1,
+                "sold_count": 1,
+                "created_at": 1,
+                "updated_at": 1
+            }
         
         # Lấy sản phẩm với projection
         cursor = products_collection.find(query, projection).sort(list(sort_dict.items())).skip(skip).limit(limit)
         products = await cursor.to_list(length=None)
-        
-        # Check if this is a single product request (by slug)
-        is_single_product_request = slug is not None and limit == 1
-        print(f"📌 is_single_product_request: {is_single_product_request}, slug: {slug}, limit: {limit}")
         
         result = []
         for product in products:
@@ -1368,14 +1374,14 @@ async def get_products(
                 if isinstance(variants, dict) and "colors" in variants:
                     colors = variants.get("colors", [])
                     if isinstance(colors, list):
-                        # Remove images from colors in list view
+                        # Giữ lại ảnh đầu tiên của mỗi màu cho hover preview
                         variants["colors"] = [
                             {
                                 "name": c.get("name", ""),
                                 "slug": c.get("slug", ""),
                                 "hex": c.get("hex", "#000000"),
                                 "available": c.get("available", True),
-                                "images": []  # Empty images array for list view
+                                "images": c.get("images", [])[:1]  # Chỉ lấy ảnh đầu tiên cho hover
                             }
                             for c in colors
                         ]
@@ -1443,20 +1449,32 @@ async def get_products(
 @app.post("/api/products/upload-images")
 async def upload_multiple_images(
     files: list[UploadFile] = File(...),
-    product_id: Optional[str] = None
+    product_id: Optional[str] = None,
+    product_slug: Optional[str] = Form(None),
+    color_name: Optional[str] = Form(None)
 ):
     """
-    Upload nhiều ảnh cùng lúc - MUST BE BEFORE /{product_id} route
+    Upload nhiều ảnh lên Cloudinary - MUST BE BEFORE /{product_id} route
     
     Args:
         files: List các file ảnh
         product_id: ID sản phẩm (optional)
+        product_slug: Slug sản phẩm (để tổ chức folder trên Cloudinary)
+        color_name: Tên màu (nếu là ảnh màu)
     
     Returns:
         {urls: ["url1", "url2"], errors: []}
     """
     try:
-        print(f"\n📤 Upload request: {len(files)} file(s)")
+        print(f"\n📤 Upload request: {len(files)} file(s) to Cloudinary")
+        print(f"   Product slug: {product_slug}, Color: {color_name}")
+        
+        if not is_cloudinary_configured():
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Cloudinary chưa được cấu hình. Kiểm tra CLOUDINARY_* trong .env"
+            )
+        
         urls = []
         errors = []
         
@@ -1475,7 +1493,7 @@ async def upload_multiple_images(
                     })
                     continue
                 
-                # Read and save
+                # Read file
                 file_content = await file.read()
                 file_size_mb = len(file_content) / (1024 * 1024)
                 print(f"     Size: {file_size_mb:.2f}MB")
@@ -1489,19 +1507,20 @@ async def upload_multiple_images(
                     })
                     continue
                 
-                print(f"     💾 Saving...")
-                url, metadata = save_uploaded_file(
+                print(f"     ☁️ Uploading to Cloudinary...")
+                url, metadata = cloudinary_upload(
                     file_content=file_content,
-                    original_filename=file.filename,
-                    product_id=product_id,
-                    optimize=True
+                    product_slug=product_slug,
+                    color_name=color_name,
+                    image_index=idx,
+                    is_main=(idx == 0 and not color_name)
                 )
                 
                 urls.append(url)
-                print(f"  ✅ Saved: {url}")
+                print(f"  ✅ Uploaded: {url[:60]}...")
                 
             except Exception as e:
-                error_msg = f"Lỗi khi xử lý file: {str(e)}"
+                error_msg = f"Lỗi khi upload: {str(e)}"
                 print(f"  ❌ {error_msg}")
                 errors.append({
                     "filename": file.filename,
@@ -1512,13 +1531,15 @@ async def upload_multiple_images(
         
         return {
             "success": True,
-            "urls": urls,  # Frontend expects "urls" array
+            "urls": urls,
             "errors": errors,
             "total": len(files),
             "success_count": len(urls),
             "error_count": len(errors)
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1528,14 +1549,20 @@ async def upload_multiple_images(
 @app.post("/api/products/upload-image")
 async def upload_product_image(
     file: UploadFile = File(...),
-    product_id: Optional[str] = None
+    product_id: Optional[str] = None,
+    product_slug: Optional[str] = Form(None),
+    color_name: Optional[str] = Form(None),
+    is_main: bool = Form(False)
 ):
     """
-    Upload ảnh sản phẩm - MUST BE BEFORE /{product_id} route
+    Upload ảnh sản phẩm lên Cloudinary - MUST BE BEFORE /{product_id} route
     
     Args:
         file: File ảnh cần upload
-        product_id: ID sản phẩm (optional, để tạo tên file unique)
+        product_id: ID sản phẩm (optional)
+        product_slug: Slug sản phẩm (để tổ chức folder)
+        color_name: Tên màu (nếu là ảnh màu)
+        is_main: True nếu là ảnh chính
     
     Returns:
         URL của ảnh đã upload
@@ -1548,15 +1575,27 @@ async def upload_product_image(
                 detail="File phải là ảnh (jpg, png, webp, gif)"
             )
         
+        if not is_cloudinary_configured():
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Cloudinary chưa được cấu hình. Kiểm tra CLOUDINARY_* trong .env"
+            )
+        
         # Read file content
         file_content = await file.read()
         
-        # Save file
-        url, metadata = save_uploaded_file(
+        print(f"☁️ Uploading to Cloudinary: {file.filename}")
+        
+        # Upload to Cloudinary
+        url, metadata = cloudinary_upload(
             file_content=file_content,
-            original_filename=file.filename,
-            product_id=product_id
+            product_slug=product_slug,
+            color_name=color_name,
+            image_index=0,
+            is_main=is_main
         )
+        
+        print(f"✅ Uploaded: {url[:60]}...")
         
         return {
             "success": True,
@@ -1817,16 +1856,21 @@ async def update_product(product_id: str = Path(...), product_data: ProductUpdat
 
 @app.delete("/api/products/{product_id}", response_model=ProductDeleteResponse)
 async def delete_product(product_id: str = Path(...)):
-    """Xóa sản phẩm và tất cả ảnh liên quan"""
+    """Xóa sản phẩm và tất cả ảnh liên quan trên Cloudinary"""
     try:
         product = await products_collection.find_one({"_id": ObjectId(product_id)})
         if not product:
             raise HTTPException(status_code=404, detail="Không tìm thấy sản phẩm")
         
-        # Xóa tất cả ảnh của sản phẩm trước
+        # Xóa tất cả ảnh của sản phẩm trên Cloudinary
+        product_slug = product.get('slug', '')
         print(f"\n🗑️  Đang xóa ảnh của sản phẩm: {product.get('name')}")
-        image_stats = delete_product_images(product)
-        print(f"✅ Đã xóa {image_stats['deleted']}/{image_stats['total']} ảnh")
+        
+        if product_slug:
+            image_stats = cloudinary_delete_product(product_slug)
+            print(f"✅ Đã xóa {image_stats.get('deleted', 0)} ảnh trên Cloudinary")
+        else:
+            image_stats = {"deleted": 0}
         
         # Xóa sản phẩm khỏi database
         await products_collection.delete_one({"_id": ObjectId(product_id)})
@@ -1915,46 +1959,48 @@ async def delete_single_image(image_url: str = Query(..., description="URL ảnh
 @app.post("/api/products/cleanup-images")
 async def cleanup_images_endpoint():
     """
-    Xóa các ảnh không được sử dụng bởi bất kỳ sản phẩm nào
-    
-    Returns:
-        Thống kê về việc cleanup
+    API này không còn cần thiết khi dùng Cloudinary
+    Cloudinary tự quản lý storage
     """
-    try:
-        # Lấy tất cả sản phẩm
-        products = await products_collection.find().to_list(length=None)
-        
-        # Cleanup
-        stats = cleanup_unused_images(products)
-        
-        return {
-            "success": True,
-            "message": f"Đã xóa {stats['deleted']} ảnh không sử dụng",
-            "stats": stats
+    return {
+        "success": True,
+        "message": "Không cần cleanup - Cloudinary tự quản lý storage",
+        "stats": {
+            "deleted": 0,
+            "note": "Images are stored on Cloudinary CDN"
         }
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Lỗi khi cleanup: {str(e)}"
-        )
+    }
 
 
 @app.get("/api/products/storage-stats")
 async def get_storage_statistics():
     """
-    Lấy thống kê về dung lượng lưu trữ ảnh
-    
-    Returns:
-        Thống kê storage
+    Lấy thống kê về Cloudinary storage
     """
     try:
-        stats = get_storage_stats()
+        import cloudinary.api
         
-        return {
-            "success": True,
-            "stats": stats
-        }
+        # Lấy usage từ Cloudinary
+        try:
+            usage = cloudinary.api.usage()
+            return {
+                "success": True,
+                "stats": {
+                    "storage": "Cloudinary CDN",
+                    "used_storage": usage.get("storage", {}).get("usage", 0),
+                    "bandwidth_used": usage.get("bandwidth", {}).get("usage", 0),
+                    "transformations": usage.get("transformations", {}).get("usage", 0),
+                    "plan": usage.get("plan", "free")
+                }
+            }
+        except:
+            return {
+                "success": True,
+                "stats": {
+                    "storage": "Cloudinary CDN",
+                    "note": "Không thể lấy thống kê chi tiết"
+                }
+            }
         
     except Exception as e:
         raise HTTPException(
@@ -4963,14 +5009,9 @@ async def migrate_color_images():
             detail=f"Migration lỗi: {str(e)}"
         )
 
-# ==================== STATIC FILES - SERVE ẢNH SẢN PHẨM ====================
-# Mount CUỐI CÙNG để không override các route khác
-# Đảm bảo thư mục uploads tồn tại khi khởi động
-import pathlib
-uploads_dir = pathlib.Path("uploads/products")
-uploads_dir.mkdir(parents=True, exist_ok=True)
-
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+# ==================== CLOUDINARY - ẢNH SẢN PHẨM ====================
+# Ảnh sản phẩm được lưu trên Cloudinary CDN
+# Không cần mount static files nữa
 
 if __name__ == "__main__":
     import uvicorn

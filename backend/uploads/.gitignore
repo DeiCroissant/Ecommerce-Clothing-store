@@ -1,9 +1,0 @@
-# Ignore all images but keep folder structure
-*.jpg
-*.jpeg
-*.png
-*.webp
-*.gif
-
-# Keep .gitkeep files
-!.gitkeep
