@@ -3,16 +3,18 @@
 /**
  * Admin Dashboard Page - VyronFashion
  * MVP Dashboard with KPIs, Charts, and Quick Actions
+ * Now with WebSocket realtime updates!
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { DollarSign, ShoppingCart, Users, TrendingUp, TrendingDown, ArrowUpRight, Package, Eye, Folder, Plus, Trash2, Edit } from 'lucide-react'
+import { DollarSign, ShoppingCart, Users, TrendingUp, TrendingDown, ArrowUpRight, Package, Eye, Folder, Plus, Trash2, Edit, RefreshCw, Wifi, WifiOff } from 'lucide-react'
 import { formatCurrency } from '@/lib/formatCurrency'
 import * as categoryAPI from '@/lib/api/categories'
 import * as dashboardAPI from '@/lib/api/adminDashboard'
 import CategoryFormModal from '@/components/admin/categories/CategoryFormModal'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { useAdminWebSocket } from '@/hooks/useAdminWebSocket'
 
 function KPICard({ data }) {
   const Icon = data.icon
@@ -49,57 +51,255 @@ function SimpleRevenueChart({ data }) {
   }
   
   const maxRevenue = Math.max(...data.map(d => d.revenue))
+  const minRevenue = Math.min(...data.map(d => d.revenue))
+  const totalRevenue = data.reduce((sum, d) => sum + d.revenue, 0)
+  const avgRevenue = totalRevenue / data.length
+  
+  // Chart dimensions - fixed pixel values for precise positioning
+  const chartWidth = 800
+  const chartHeight = 250
+  const paddingTop = 50
+  const paddingBottom = 40
+  const paddingLeft = 40
+  const paddingRight = 40
+  const graphHeight = chartHeight - paddingTop - paddingBottom
+  const graphWidth = chartWidth - paddingLeft - paddingRight
+  
+  // Calculate positions
+  const getX = (index) => {
+    if (data.length === 1) return paddingLeft + graphWidth / 2
+    return paddingLeft + (index / (data.length - 1)) * graphWidth
+  }
+  
+  const getY = (revenue) => {
+    if (maxRevenue === minRevenue) return paddingTop + graphHeight / 2
+    const range = maxRevenue - minRevenue
+    const padding = range * 0.1
+    return paddingTop + ((maxRevenue + padding - revenue) / (range + padding * 2)) * graphHeight
+  }
+  
+  // Generate points with pixel positions
+  const points = data.map((item, index) => ({
+    x: getX(index),
+    y: getY(item.revenue),
+    ...item
+  }))
+  
+  // Create line path
+  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+  const areaPath = `${linePath} L ${points[points.length - 1].x} ${paddingTop + graphHeight} L ${points[0].x} ${paddingTop + graphHeight} Z`
   
   return (
     <div style={{ padding: 'var(--space-6)' }}>
+      {/* Summary Stats */}
+      <div style={{ 
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: 'var(--space-4)',
+        marginBottom: 'var(--space-6)',
+        padding: 'var(--space-4)',
+        backgroundColor: 'var(--neutral-50)',
+        borderRadius: 'var(--radius-lg)'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
+            Tổng doanh thu
+          </div>
+          <div style={{ 
+            fontSize: 'var(--text-xl)', 
+            fontWeight: 'var(--font-bold)',
+            color: 'var(--brand-600)'
+          }}>
+            {formatCurrency(totalRevenue)}
+          </div>
+        </div>
+        <div style={{ textAlign: 'center', borderLeft: '1px solid var(--border)', borderRight: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
+            Trung bình/ngày
+          </div>
+          <div style={{ 
+            fontSize: 'var(--text-xl)', 
+            fontWeight: 'var(--font-bold)',
+            color: 'var(--text)'
+          }}>
+            {formatCurrency(avgRevenue)}
+          </div>
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
+            Cao nhất
+          </div>
+          <div style={{ 
+            fontSize: 'var(--text-xl)', 
+            fontWeight: 'var(--font-bold)',
+            color: 'var(--success-600)'
+          }}>
+            {formatCurrency(maxRevenue)}
+          </div>
+        </div>
+      </div>
+
+      {/* Line Chart - SVG with viewBox for responsive scaling */}
+      <div style={{ 
+        backgroundColor: 'var(--neutral-50)',
+        borderRadius: 'var(--radius-lg)',
+        padding: 'var(--space-2)',
+        overflow: 'hidden'
+      }}>
+        <svg 
+          viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+          style={{ 
+            width: '100%',
+            height: 'auto',
+            display: 'block'
+          }}
+          preserveAspectRatio="xMidYMid meet"
+        >
+          {/* Gradient definition */}
+          <defs>
+            <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="#6366f1" stopOpacity="0.05" />
+            </linearGradient>
+          </defs>
+          
+          {/* Horizontal grid lines */}
+          {[0, 1, 2, 3, 4].map(i => {
+            const y = paddingTop + (graphHeight / 4) * i
+            return (
+              <line
+                key={i}
+                x1={paddingLeft}
+                y1={y}
+                x2={chartWidth - paddingRight}
+                y2={y}
+                stroke="#e5e7eb"
+                strokeWidth="1"
+                strokeDasharray="4 4"
+              />
+            )
+          })}
+          
+          {/* Vertical grid lines at each data point */}
+          {points.map((point, index) => (
+            <line
+              key={index}
+              x1={point.x}
+              y1={paddingTop}
+              x2={point.x}
+              y2={paddingTop + graphHeight}
+              stroke="#e5e7eb"
+              strokeWidth="1"
+              strokeDasharray="2 2"
+            />
+          ))}
+          
+          {/* Area fill */}
+          <path
+            d={areaPath}
+            fill="url(#areaGradient)"
+          />
+          
+          {/* Main line */}
+          <path
+            d={linePath}
+            fill="none"
+            stroke="#6366f1"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          
+          {/* Data points and labels */}
+          {points.map((point, index) => {
+            const isHighest = point.revenue === maxRevenue
+            const isToday = index === data.length - 1
+            return (
+              <g key={index}>
+                {/* Point circle */}
+                <circle
+                  cx={point.x}
+                  cy={point.y}
+                  r="6"
+                  fill="white"
+                  stroke={isHighest ? "#22c55e" : "#6366f1"}
+                  strokeWidth="3"
+                />
+                
+                {/* Revenue label - positioned directly above the point */}
+                <g transform={`translate(${point.x}, ${point.y - 20})`}>
+                  <rect
+                    x="-45"
+                    y="-12"
+                    width="90"
+                    height="20"
+                    rx="4"
+                    fill="white"
+                    stroke={isHighest ? "#bbf7d0" : "#e0e7ff"}
+                    strokeWidth="1"
+                    filter="drop-shadow(0 1px 2px rgba(0,0,0,0.1))"
+                  />
+                  <text
+                    x="0"
+                    y="3"
+                    textAnchor="middle"
+                    fontSize="10"
+                    fontWeight="600"
+                    fill={isHighest ? "#16a34a" : "#4338ca"}
+                  >
+                    {formatCurrency(point.revenue)}
+                  </text>
+                </g>
+                
+                {/* Date label - positioned below the chart, aligned with point */}
+                <text
+                  x={point.x}
+                  y={chartHeight - 10}
+                  textAnchor="middle"
+                  fontSize="11"
+                  fontWeight={isToday || isHighest ? "600" : "400"}
+                  fill={isHighest ? "#16a34a" : isToday ? "#6366f1" : "#6b7280"}
+                >
+                  {point.date}
+                </text>
+              </g>
+            )
+          })}
+        </svg>
+      </div>
+
+      {/* Legend */}
       <div style={{ 
         display: 'flex', 
-        alignItems: 'flex-end', 
-        gap: 'var(--space-2)', 
-        height: '280px',
-        borderBottom: '1px solid var(--border)',
-        paddingBottom: 'var(--space-2)'
+        justifyContent: 'center',
+        gap: 'var(--space-6)',
+        paddingTop: 'var(--space-4)',
+        marginTop: 'var(--space-4)',
+        borderTop: '1px solid var(--border)'
       }}>
-        {data.map((item, index) => {
-          const height = (item.revenue / maxRevenue) * 100
-          return (
-            <div 
-              key={index}
-              style={{ 
-                flex: 1, 
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 'var(--space-2)'
-              }}
-            >
-              <div
-                style={{
-                  width: '100%',
-                  height: `${height}%`,
-                  backgroundColor: 'var(--brand-500)',
-                  borderRadius: 'var(--radius-base) var(--radius-base) 0 0',
-                  transition: 'all var(--transition-base)',
-                  cursor: 'pointer'
-                }}
-                title={`${item.date}: ${formatCurrency(item.revenue)}`}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'var(--brand-600)'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'var(--brand-500)'
-                }}
-              />
-              <div style={{ 
-                fontSize: 'var(--text-xs)', 
-                color: 'var(--text-tertiary)',
-                fontWeight: 'var(--font-medium)'
-              }}>
-                {item.date}
-              </div>
-            </div>
-          )
-        })}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ 
+            width: '24px', 
+            height: '3px', 
+            borderRadius: '2px',
+            backgroundColor: '#6366f1'
+          }} />
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+            Doanh thu theo ngày
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ 
+            width: '10px', 
+            height: '10px', 
+            borderRadius: '50%',
+            backgroundColor: 'white',
+            border: '2px solid #22c55e'
+          }} />
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+            Cao nhất
+          </span>
+        </div>
       </div>
     </div>
   )
@@ -112,6 +312,7 @@ export default function AdminDashboardPage() {
   const [loadingCategories, setLoadingCategories] = useState(true)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteTargetId, setDeleteTargetId] = useState(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   
   // Dashboard data states
   const [dashboardData, setDashboardData] = useState({
@@ -129,56 +330,109 @@ export default function AdminDashboardPage() {
     day: 'numeric'
   })
   
-  // Load dashboard data
-  useEffect(() => {
-    const loadDashboard = async () => {
-      setLoadingDashboard(true)
-      try {
-        const data = await dashboardAPI.getDashboardStats()
-        
-        // Transform KPIs để match với component structure
-        const transformedKPIs = data.kpis.map(kpi => ({
-          id: kpi.id,
-          title: kpi.title,
-          value: kpi.value,
-          change: Math.abs(kpi.change),
-          trend: kpi.trend,
-          icon: kpi.id === 'revenue' ? DollarSign : 
-                kpi.id === 'orders' ? ShoppingCart :
-                kpi.id === 'customers' ? Users : TrendingUp,
-          color: kpi.id === 'revenue' ? 'blue' :
-                 kpi.id === 'orders' ? 'green' :
-                 kpi.id === 'customers' ? 'purple' : 'orange',
-          isCurrency: kpi.is_currency
-        }))
-        
-        setDashboardData({
-          kpis: transformedKPIs,
-          revenue_chart: data.revenue_chart || [],
-          pending_orders: data.pending_orders || [],
-          low_stock_products: data.low_stock_products || []
-        })
-      } catch (error) {
-        console.error('Error loading dashboard:', error)
-        // Keep empty state on error
-        setDashboardData({
-          kpis: [],
-          revenue_chart: [],
-          pending_orders: [],
-          low_stock_products: []
-        })
-      } finally {
-        setLoadingDashboard(false)
-      }
+  // Load dashboard data function (extracted for reuse)
+  const loadDashboard = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoadingDashboard(true)
+    try {
+      const data = await dashboardAPI.getDashboardStats()
+      
+      console.log('📊 Dashboard API Response:', data)
+      console.log('📈 Revenue Chart Data:', data.revenue_chart)
+      
+      // Transform KPIs để match với component structure
+      const transformedKPIs = data.kpis.map(kpi => ({
+        id: kpi.id,
+        title: kpi.title,
+        value: kpi.value,
+        change: Math.abs(kpi.change),
+        trend: kpi.trend,
+        icon: kpi.id === 'revenue' ? DollarSign : 
+              kpi.id === 'orders' ? ShoppingCart :
+              kpi.id === 'customers' ? Users : TrendingUp,
+        color: kpi.id === 'revenue' ? 'blue' :
+               kpi.id === 'orders' ? 'green' :
+               kpi.id === 'customers' ? 'purple' : 'orange',
+        isCurrency: kpi.is_currency
+      }))
+      
+      setDashboardData({
+        kpis: transformedKPIs,
+        revenue_chart: data.revenue_chart || [],
+        pending_orders: data.pending_orders || [],
+        low_stock_products: data.low_stock_products || []
+      })
+    } catch (error) {
+      console.error('Error loading dashboard:', error)
+      // Keep empty state on error
+      setDashboardData({
+        kpis: [],
+        revenue_chart: [],
+        pending_orders: [],
+        low_stock_products: []
+      })
+    } finally {
+      setLoadingDashboard(false)
+      setIsRefreshing(false)
+    }
+  }, [])
+
+  // Manual refresh handler
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true)
+    await loadDashboard(false)
+    
+    // Show toast notification
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('showToast', { 
+        detail: { message: '✅ Đã cập nhật dữ liệu!', type: 'success', duration: 2000 } 
+      }))
+    }
+  }, [loadDashboard])
+
+  // WebSocket handlers
+  const handleNewOrder = useCallback((orderData) => {
+    console.log('🔔 New order received:', orderData)
+    
+    // Show notification
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('showToast', { 
+        detail: { 
+          message: `🛒 Đơn hàng mới: ${orderData.order_number} - ${formatCurrency(orderData.total_amount)}`, 
+          type: 'info', 
+          duration: 5000 
+        } 
+      }))
     }
     
+    // Refresh dashboard data
+    loadDashboard(false)
+  }, [loadDashboard])
+
+  const handleOrderUpdate = useCallback((data) => {
+    console.log('📦 Order updated:', data)
+    
+    // Refresh dashboard data
+    loadDashboard(false)
+  }, [loadDashboard])
+
+  const handleRefreshRequired = useCallback(() => {
+    console.log('🔄 Refresh required from server')
+    loadDashboard(false)
+  }, [loadDashboard])
+
+  // WebSocket connection
+  const { isConnected, connectionStatus, reconnect } = useAdminWebSocket({
+    onNewOrder: handleNewOrder,
+    onOrderUpdate: handleOrderUpdate,
+    onRefreshRequired: handleRefreshRequired,
+    autoReconnect: true,
+    reconnectInterval: 5000
+  })
+  
+  // Initial load
+  useEffect(() => {
     loadDashboard()
-    
-    // Refresh dashboard every 5 minutes
-    const interval = setInterval(loadDashboard, 300000)
-    
-    return () => clearInterval(interval)
-  }, [])
+  }, [loadDashboard])
 
   // Load categories từ API
   useEffect(() => {
@@ -275,24 +529,93 @@ export default function AdminDashboardPage() {
 
   return (
     <div>
-      {/* Page Header */}
-      <div style={{ marginBottom: 'var(--space-8)' }}>
-        <h1 style={{
-          fontSize: 'var(--text-2xl)',
-          fontWeight: 'var(--font-bold)',
-          color: 'var(--text)',
-          marginBottom: 'var(--space-1)',
-          fontFamily: 'var(--font-display)'
-        }}>
-          Bảng điều khiển
-        </h1>
-        <p style={{
-          fontSize: 'var(--text-sm)',
-          color: 'var(--text-secondary)'
-        }}>
-          {currentDate}
-        </p>
+      {/* Page Header with Refresh Button and Connection Status */}
+      <div style={{ 
+        marginBottom: 'var(--space-8)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start'
+      }}>
+        <div>
+          <h1 style={{
+            fontSize: 'var(--text-2xl)',
+            fontWeight: 'var(--font-bold)',
+            color: 'var(--text)',
+            marginBottom: 'var(--space-1)',
+            fontFamily: 'var(--font-display)'
+          }}>
+            Bảng điều khiển
+          </h1>
+          <p style={{
+            fontSize: 'var(--text-sm)',
+            color: 'var(--text-secondary)'
+          }}>
+            {currentDate}
+          </p>
+        </div>
+        
+        {/* Refresh Button & Connection Status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          {/* WebSocket Connection Status */}
+          <button 
+            onClick={connectionStatus === 'error' ? reconnect : undefined}
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '6px',
+              padding: '6px 12px',
+              borderRadius: 'var(--radius-full)',
+              backgroundColor: isConnected ? 'var(--success-50)' : connectionStatus === 'error' ? 'var(--error-50)' : 'var(--warning-50)',
+              border: `1px solid ${isConnected ? 'var(--success-200)' : connectionStatus === 'error' ? 'var(--error-200)' : 'var(--warning-200)'}`,
+              cursor: connectionStatus === 'error' ? 'pointer' : 'default',
+              outline: 'none'
+            }}
+            title={isConnected ? 'Realtime: Đang kết nối' : connectionStatus === 'error' ? 'Click để kết nối lại' : 'Realtime: Đang kết nối...'}
+          >
+            {isConnected ? (
+              <Wifi size={14} style={{ color: 'var(--success-600)' }} />
+            ) : (
+              <WifiOff size={14} style={{ color: connectionStatus === 'error' ? 'var(--error-600)' : 'var(--warning-600)' }} />
+            )}
+            <span style={{ 
+              fontSize: 'var(--text-xs)', 
+              fontWeight: 'var(--font-medium)',
+              color: isConnected ? 'var(--success-700)' : connectionStatus === 'error' ? 'var(--error-700)' : 'var(--warning-700)'
+            }}>
+              {isConnected ? 'Live' : connectionStatus === 'error' ? 'Offline - Click để thử lại' : 'Đang kết nối...'}
+            </span>
+          </button>
+          
+          {/* Refresh Button */}
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing || loadingDashboard}
+            className="admin-btn admin-btn-secondary admin-btn-sm"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+            title="Cập nhật dữ liệu ngay"
+          >
+            <RefreshCw 
+              size={16} 
+              style={{ 
+                animation: isRefreshing ? 'spin 1s linear infinite' : 'none'
+              }} 
+            />
+            <span>{isRefreshing ? 'Đang cập nhật...' : 'Cập nhật'}</span>
+          </button>
+        </div>
       </div>
+
+      {/* Spin animation style */}
+      <style jsx>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
 
       {/* KPI Cards */}
       <div className="admin-grid admin-grid-cols-4" style={{ marginBottom: 'var(--space-8)' }}>
@@ -320,7 +643,7 @@ export default function AdminDashboardPage() {
           <div className="admin-card-header">
             <div>
               <h2 className="admin-card-title">Doanh thu 30 ngày qua</h2>
-              <p className="admin-card-description">Biểu đồ doanh thu theo ngày (14 ngày gần nhất)</p>
+              <p className="admin-card-description">Biểu đồ doanh thu theo ngày (chỉ hiển thị ngày có đơn hàng)</p>
             </div>
           </div>
           {loadingDashboard ? (

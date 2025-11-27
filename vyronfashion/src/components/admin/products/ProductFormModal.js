@@ -84,7 +84,29 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
       }))
     } else if (product) {
       console.log('📦 Loading product for edit:', product.name)
-      console.log('📸 Product variants:', JSON.stringify(product.variants, null, 2))
+      console.log('📸 Product variants from API:', JSON.stringify(product.variants, null, 2))
+      console.log('📸 Raw color images:')
+      product.variants?.colors?.forEach((color, idx) => {
+        console.log(`   Color ${idx} "${color.name}":`, color.images)
+      })
+      
+      // Clean images khi load - remove any blob URLs
+      const cleanImages = (product.images || []).filter(
+        img => img && typeof img === 'string' && !img.startsWith('blob:')
+      )
+      
+      // Clean color images
+      const cleanVariants = product.variants ? {
+        ...product.variants,
+        colors: (product.variants.colors || []).map(color => ({
+          ...color,
+          images: (color.images || []).filter(
+            img => img && typeof img === 'string' && !img.startsWith('blob:')
+          )
+        })),
+        sizes: product.variants.sizes || []
+      } : { colors: [], sizes: [] }
+      
       setFormData({
         name: product.name || '',
         slug: product.slug || '',
@@ -98,9 +120,9 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
           currency: 'VND'
         },
         short_description: product.short_description || '',
-        image: product.image || '',
-        images: product.images || [],
-        variants: product.variants || { colors: [], sizes: [] },
+        image: (product.image && !product.image.startsWith('blob:')) ? product.image : '',
+        images: cleanImages,
+        variants: cleanVariants,
         inventory: product.inventory || {
           in_stock: true,
           quantity: 0,
@@ -108,8 +130,13 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
         },
         status: product.status || 'active'
       })
+      
+      // Clear any pending images when loading a product for edit
+      setPendingMainImage(null)
+      setPendingGalleryImages([])
+      setPendingColorImages({})
     }
-  }, [product])
+  }, [product, defaultCategory])
 
   // Cleanup blob URLs khi component unmount để tránh memory leak
   useEffect(() => {
@@ -393,117 +420,191 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
     setIsSubmitting(true)
     
     try {
-      let finalFormData = { ...formData }
+      // Clone formData để không ảnh hưởng state gốc - deep clone
+      let finalFormData = JSON.parse(JSON.stringify(formData))
       
-      // 1. Upload ảnh chính (nếu có pending)
+      // Collect all pending images to upload in one batch
+      // SỬ DỤNG uploadMapping để theo dõi chính xác file nào thuộc về đâu
+      const allPendingFiles = []
+      const uploadMapping = [] // Track what each uploaded file is for
+      
+      // 1. Collect main image
       if (pendingMainImage) {
-        const mainFormData = new FormData()
-        mainFormData.append('files', pendingMainImage.file)
+        console.log('📸 Adding main image to batch:', pendingMainImage.file.name)
+        allPendingFiles.push(pendingMainImage.file)
+        uploadMapping.push({ type: 'main', index: 0 })
+      }
+      
+      // 2. Collect gallery images
+      pendingGalleryImages.forEach((item, idx) => {
+        console.log(`📸 Adding gallery image ${idx} to batch:`, item.file.name)
+        allPendingFiles.push(item.file)
+        uploadMapping.push({ type: 'gallery', index: idx })
+      })
+      
+      // 3. Collect color images - SẮP XẾP theo colorIndex để đảm bảo thứ tự
+      const sortedColorIndexes = Object.keys(pendingColorImages)
+        .map(k => parseInt(k))
+        .sort((a, b) => a - b) // Sắp xếp theo thứ tự tăng dần
+      
+      console.log('🎨 Sorted color indexes with pending images:', sortedColorIndexes)
+      
+      sortedColorIndexes.forEach(colorIdx => {
+        const colorPendingImages = pendingColorImages[colorIdx]
+        const colorName = formData.variants?.colors?.[colorIdx]?.name || `Color ${colorIdx}`
+        
+        if (colorPendingImages && colorPendingImages.length > 0) {
+          console.log(`🎨 Color "${colorName}" (index ${colorIdx}): adding ${colorPendingImages.length} images`)
+          
+          colorPendingImages.forEach((item, imgIdx) => {
+            console.log(`   📸 Image ${imgIdx}: ${item.file.name}`)
+            allPendingFiles.push(item.file)
+            uploadMapping.push({ type: 'color', colorIndex: colorIdx, imgIndex: imgIdx })
+          })
+        }
+      })
+      
+      console.log('📋 Upload mapping:', uploadMapping)
+      
+      // 4. Upload all images in one batch request (nếu có)
+      let uploadedUrls = []
+      if (allPendingFiles.length > 0) {
+        console.log(`📸 Uploading ${allPendingFiles.length} images in one batch...`)
+        
+        const batchFormData = new FormData()
+        allPendingFiles.forEach((file, idx) => {
+          console.log(`   [${idx}] ${file.name}`)
+          batchFormData.append('files', file)
+        })
         
         const response = await fetch(`${API_BASE_URL}/api/products/upload-images`, {
           method: 'POST',
-          body: mainFormData
+          body: batchFormData
         })
         
-        if (!response.ok) throw new Error('Upload main image failed')
+        if (!response.ok) throw new Error('Upload images failed')
         
         const result = await response.json()
-        if (result.urls && result.urls.length > 0) {
-          finalFormData.image = result.urls[0]
-        }
+        uploadedUrls = result.urls || []
+        console.log(`✅ Uploaded ${uploadedUrls.length} images successfully`)
+        console.log('📋 Uploaded URLs:', uploadedUrls)
       }
       
-      // 2. Upload ảnh gallery (nếu có pending)
-      if (pendingGalleryImages.length > 0) {
-        const galleryFormData = new FormData()
-        pendingGalleryImages.forEach(item => {
-          galleryFormData.append('files', item.file)
-        })
-        
-        const response = await fetch(`${API_BASE_URL}/api/products/upload-images`, {
-          method: 'POST',
-          body: galleryFormData
-        })
-        
-        if (!response.ok) throw new Error('Upload gallery images failed')
-        
-        const result = await response.json()
-        if (result.urls && result.urls.length > 0) {
-          // Get existing REAL images (filter out blob URLs) and remove duplicates
-          const existingImages = (finalFormData.images || [])
-            .filter(img => img && typeof img === 'string' && !img.startsWith('blob:'))
-          finalFormData.images = [...new Set([...existingImages, ...result.urls])]
-        }
-      }
+      // 5. Map uploaded URLs back using uploadMapping (QUAN TRỌNG!)
+      // Sử dụng mapping thay vì đếm index thủ công
       
-      // 3. Upload ảnh màu sắc (nếu có pending)
-      const colorIndexes = Object.keys(pendingColorImages)
-      console.log('🎨 Color indexes with pending images:', colorIndexes)
-      if (colorIndexes.length > 0) {
-        for (const indexStr of colorIndexes) {
-          const index = parseInt(indexStr)
-          const colorPendingImages = pendingColorImages[index]
-          
-          console.log(`   Color ${index}: ${colorPendingImages?.length || 0} pending images`)
-          
-          if (colorPendingImages && colorPendingImages.length > 0) {
-            const colorFormData = new FormData()
-            colorPendingImages.forEach(item => {
-              colorFormData.append('files', item.file)
-            })
-            
-            const response = await fetch(`${API_BASE_URL}/api/products/upload-images`, {
-              method: 'POST',
-              body: colorFormData
-            })
-            
-            if (!response.ok) throw new Error(`Upload color ${index} images failed`)
-            
-            const result = await response.json()
-            console.log(`   Color ${index} upload result:`, result)
-            if (result.urls && result.urls.length > 0) {
-              // Get existing REAL images (filter out blob URLs)
-              const existingImages = (finalFormData.variants.colors[index].images || [])
-                .filter(img => img && typeof img === 'string' && !img.startsWith('blob:'))
-              
-              // Remove duplicates by using Set
-              const allImages = [...new Set([...existingImages, ...result.urls])]
-              
-              finalFormData.variants.colors[index].images = allImages
-              console.log(`   Color ${index} final images:`, finalFormData.variants.colors[index].images)
-            }
+      // Tạo map để lưu URLs theo loại
+      const colorUrlsMap = {} // { colorIndex: [urls] }
+      const galleryUrls = []
+      let mainImageUrl = null
+      
+      uploadMapping.forEach((mapping, idx) => {
+        const url = uploadedUrls[idx]
+        if (!url) return
+        
+        if (mapping.type === 'main') {
+          mainImageUrl = url
+          console.log(`✅ Mapped main image: ${url}`)
+        } else if (mapping.type === 'gallery') {
+          galleryUrls.push(url)
+          console.log(`✅ Mapped gallery image ${mapping.index}: ${url}`)
+        } else if (mapping.type === 'color') {
+          if (!colorUrlsMap[mapping.colorIndex]) {
+            colorUrlsMap[mapping.colorIndex] = []
           }
+          colorUrlsMap[mapping.colorIndex].push(url)
+          const colorName = formData.variants?.colors?.[mapping.colorIndex]?.name || `Color ${mapping.colorIndex}`
+          console.log(`✅ Mapped color "${colorName}" image ${mapping.imgIndex}: ${url}`)
         }
+      })
+      
+      // 6. Apply mapped URLs to finalFormData
+      
+      // Apply main image
+      if (mainImageUrl) {
+        finalFormData.image = mainImageUrl
       }
       
-      console.log('📦 Final form data before save:', JSON.stringify(finalFormData.variants, null, 2))
-      
-      // 4. Final cleanup: Remove all blob URLs and duplicates from all image arrays
-      // Clean main images array
-      if (finalFormData.images) {
-        const seen = new Set()
-        finalFormData.images = finalFormData.images.filter(img => {
-          if (!img || typeof img !== 'string' || img.startsWith('blob:') || seen.has(img)) return false
-          seen.add(img)
+      // Apply gallery images
+      if (galleryUrls.length > 0) {
+        const existingGalleryImages = (formData.images || [])
+          .filter(img => img && typeof img === 'string' && !img.startsWith('blob:'))
+        
+        // Combine and deduplicate
+        const seenGallery = new Set()
+        finalFormData.images = [...existingGalleryImages, ...galleryUrls].filter(img => {
+          if (!img || seenGallery.has(img)) return false
+          seenGallery.add(img)
           return true
         })
       }
       
-      // Clean color images arrays
+      // Apply color images - dùng colorUrlsMap
+      Object.keys(colorUrlsMap).forEach(colorIdxStr => {
+        const colorIdx = parseInt(colorIdxStr)
+        const newUrls = colorUrlsMap[colorIdx]
+        
+        if (newUrls.length > 0 && finalFormData.variants?.colors?.[colorIdx]) {
+          // Get existing real images for this color
+          const existingColorImages = (formData.variants.colors[colorIdx]?.images || [])
+            .filter(img => img && typeof img === 'string' && !img.startsWith('blob:'))
+          
+          // Combine and deduplicate
+          const seenColor = new Set()
+          finalFormData.variants.colors[colorIdx].images = [...existingColorImages, ...newUrls].filter(img => {
+            if (!img || seenColor.has(img)) return false
+            seenColor.add(img)
+            return true
+          })
+          
+          console.log(`🎨 Color ${colorIdx} final images:`, finalFormData.variants.colors[colorIdx].images)
+        }
+      })
+      
+      // 7. Final cleanup: ensure no blob URLs anywhere (safety check)
+      if (finalFormData.image && finalFormData.image.startsWith('blob:')) {
+        // Nếu main image là blob (không nên xảy ra), lấy từ formData gốc
+        finalFormData.image = (formData.image && !formData.image.startsWith('blob:')) ? formData.image : ''
+      }
+      
+      // Clean gallery images
+      if (finalFormData.images) {
+        finalFormData.images = finalFormData.images.filter(
+          img => img && typeof img === 'string' && !img.startsWith('blob:')
+        )
+      }
+      
+      // Clean color images
       if (finalFormData.variants?.colors) {
-        finalFormData.variants.colors.forEach(color => {
+        finalFormData.variants.colors.forEach((color, idx) => {
           if (color.images) {
-            const seen = new Set()
-            color.images = color.images.filter(img => {
-              if (!img || typeof img !== 'string' || img.startsWith('blob:') || seen.has(img)) return false
-              seen.add(img)
-              return true
-            })
+            color.images = color.images.filter(
+              img => img && typeof img === 'string' && !img.startsWith('blob:')
+            )
+          } else {
+            color.images = []
           }
         })
       }
       
-      // 5. Cleanup blob URLs và clear pending states SAU KHI upload thành công
+      console.log('📦 Final form data:', {
+        image: finalFormData.image,
+        imagesCount: finalFormData.images?.length,
+        colorsCount: finalFormData.variants?.colors?.length,
+        colorImages: finalFormData.variants?.colors?.map(c => ({
+          name: c.name,
+          imagesCount: c.images?.length,
+          images: c.images // Thêm danh sách ảnh chi tiết
+        }))
+      })
+      
+      // Log chi tiết từng màu trước khi gửi
+      console.log('🔍 Chi tiết ảnh từng màu TRƯỚC khi gửi API:')
+      finalFormData.variants?.colors?.forEach((color, idx) => {
+        console.log(`   Màu ${idx} "${color.name}":`, color.images)
+      })
+      
+      // 7. Cleanup blob URLs
       if (pendingMainImage) {
         URL.revokeObjectURL(pendingMainImage.preview)
         setPendingMainImage(null)
@@ -516,10 +617,7 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
       })
       setPendingColorImages({})
       
-      // 6. Update formData với URLs đã upload (để tránh duplicate nếu onSave fail)
-      setFormData(finalFormData)
-      
-      // 7. Gọi onSave với dữ liệu đã upload
+      // 8. Gọi onSave với dữ liệu đã upload
       onSave(finalFormData)
       
     } catch (error) {
@@ -1230,13 +1328,20 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
             <h3 style={{
               fontSize: 'var(--text-lg)',
               fontWeight: 'var(--font-semibold)',
+              marginBottom: 'var(--space-2)'
+            }}>
+              Ảnh thumbnail (hiển thị ngoài danh sách)
+            </h3>
+            <p style={{
+              fontSize: 'var(--text-xs)',
+              color: 'var(--text-tertiary)',
               marginBottom: 'var(--space-4)'
             }}>
-              Hình ảnh sản phẩm
-            </h3>
+              Ảnh này hiển thị ở danh sách sản phẩm. Ảnh chi tiết sản phẩm sẽ lấy từ ảnh của từng màu sắc bên trên.
+            </p>
             <div>
               <label className="admin-label">
-                Hình ảnh chính * (Ảnh đầu tiên sẽ là ảnh chính)
+                Ảnh đại diện *
               </label>
               <div style={{ marginBottom: 'var(--space-4)' }}>
                 <input
@@ -1314,7 +1419,7 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
                   color: 'var(--text-tertiary)',
                   marginTop: 'var(--space-2)'
                 }}>
-                  Có thể chọn nhiều ảnh cùng lúc. Ảnh đầu tiên sẽ là ảnh chính. <strong>Kéo thả</strong> để sắp xếp lại thứ tự.
+                  Ảnh này dùng làm thumbnail hiển thị ở danh sách sản phẩm. <strong>Kéo thả</strong> để sắp xếp.
                 </p>
               </div>
               
@@ -1322,7 +1427,7 @@ export default function ProductFormModal({ product, defaultCategory, onClose, on
               {(formData.image || (formData.images && formData.images.length > 0) || pendingMainImage || pendingGalleryImages.length > 0) && (
                 <div style={{ marginTop: 'var(--space-4)' }}>
                   <label className="admin-label" style={{ marginBottom: 'var(--space-3)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                    <span>Gallery ảnh ({(formData.image ? 1 : 0) + (pendingMainImage ? 1 : 0)} ảnh chính + {(formData.images?.length || 0) + pendingGalleryImages.length} ảnh gallery)</span>
+                    <span>Ảnh thumbnail ({(formData.image ? 1 : 0) + (pendingMainImage ? 1 : 0) + (formData.images?.length || 0) + pendingGalleryImages.length} ảnh)</span>
                     <span style={{ 
                       fontSize: 'var(--text-xs)', 
                       color: 'var(--text-tertiary)',

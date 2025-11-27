@@ -41,7 +41,8 @@ def generate_public_id(
     product_slug: Optional[str] = None,
     color_name: Optional[str] = None,
     image_index: int = 0,
-    is_main: bool = False
+    is_main: bool = False,
+    unique_suffix: Optional[str] = None  # Thêm suffix để đảm bảo unique
 ) -> str:
     """
     Tạo public_id cho ảnh trên Cloudinary
@@ -49,9 +50,9 @@ def generate_public_id(
     Format:
     - Ảnh chính: vyron-fashion/products/{product-slug}/main
     - Ảnh màu: vyron-fashion/products/{product-slug}/colors/{color-name}/img-{index}
-    - Ảnh tạm: vyron-fashion/temp/{timestamp}_{hash}
+    - Ảnh tạm: vyron-fashion/temp/{timestamp}_{hash}_{index}
     """
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")  # Thêm microseconds
     
     if product_slug:
         if is_main:
@@ -61,9 +62,11 @@ def generate_public_id(
         else:
             return f"vyron-fashion/products/{product_slug}/gallery/img-{image_index}"
     else:
-        # Ảnh tạm khi chưa có product_slug
-        file_hash = hashlib.md5(f"{timestamp}".encode()).hexdigest()[:8]
-        return f"vyron-fashion/temp/{timestamp}_{file_hash}"
+        # Ảnh tạm khi chưa có product_slug - thêm index và random để đảm bảo unique
+        import random
+        random_suffix = unique_suffix or f"{random.randint(1000, 9999)}"
+        file_hash = hashlib.md5(f"{timestamp}_{image_index}_{random_suffix}".encode()).hexdigest()[:8]
+        return f"vyron-fashion/temp/{timestamp}_{image_index}_{file_hash}"
 
 
 def upload_image(

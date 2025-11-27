@@ -144,14 +144,14 @@ export default function ProductReviews({ product, reviews = [], loading = false,
               
               return (
                 <div key={star} className="flex items-center gap-2 mb-2">
-                  <span className="text-sm font-medium w-8">{star} sao</span>
+                  <span className="text-sm font-medium w-12 whitespace-nowrap">{star} sao</span>
                   <div className="flex-1 bg-gray-200 rounded-full h-2">
                     <div
                       className="bg-yellow-400 h-2 rounded-full"
                       style={{ width: `${percentage}%` }}
                     />
                   </div>
-                  <span className="text-sm text-gray-600 w-12 text-right">{count}</span>
+                  <span className="text-sm text-gray-600 w-8 text-right">{count}</span>
                 </div>
               )
             })}

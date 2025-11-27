@@ -173,22 +173,20 @@ export default function ProductDetailPage({ params }) {
     loadProduct();
   }, [slug]);
 
-  // Get all images from product - prioritize selected color's images
-  // Each image includes metadata about which color it belongs to (if any)
+  // Get images for product detail - ONLY show selected color's images
+  // Gallery/thumbnail images (product.image, product.images) are for listing page only
   const productImages = product 
     ? (() => {
-        console.log('🖼️ Building product images...')
-        console.log('   Product variants:', product.variants)
-        console.log('   Colors:', product.variants?.colors)
+        console.log('🖼️ Building product images (only selected color)...')
+        console.log('   Selected color:', selectedVariant.color)
         
         const imagesMap = new Map(); // Use Map to avoid duplicates by URL
-        const selectedColorImages = [];
-        const otherImages = [];
+        const colorImages = [];
         
-        // 1. Collect selected color images first (if color is selected)
+        // 1. If color is selected, only show that color's images
         if (selectedVariant.color && product.variants?.colors) {
           const selectedColorObj = product.variants.colors.find(c => c.slug === selectedVariant.color);
-          console.log('   Selected color:', selectedColorObj)
+          console.log('   Found color:', selectedColorObj?.name)
           if (selectedColorObj && selectedColorObj.images && selectedColorObj.images.length > 0) {
             selectedColorObj.images.forEach((img, index) => {
               const imgUrl = getImageUrl(img);
@@ -199,83 +197,55 @@ export default function ProductDetailPage({ params }) {
                   colorSlug: selectedColorObj.slug
                 };
                 imagesMap.set(imgUrl, imageData);
-                selectedColorImages.push(imageData);
+                colorImages.push(imageData);
               }
             });
           }
         }
         
-        // 2. Add main image (if exists and not duplicate)
-        if (product.image) {
-          const mainImgUrl = getImageUrl(product.image);
-          if (!imagesMap.has(mainImgUrl)) {
-            const imageData = {
-              url: mainImgUrl,
-              alt: product.name,
-              colorSlug: null
-            };
-            imagesMap.set(mainImgUrl, imageData);
-            otherImages.push(imageData);
+        // 2. If no color selected OR selected color has no images, show first color's images
+        if (colorImages.length === 0 && product.variants?.colors?.length > 0) {
+          const firstColor = product.variants.colors[0];
+          console.log('   Fallback to first color:', firstColor?.name)
+          if (firstColor && firstColor.images && firstColor.images.length > 0) {
+            firstColor.images.forEach((img, index) => {
+              const imgUrl = getImageUrl(img);
+              if (!imagesMap.has(imgUrl)) {
+                const imageData = {
+                  url: imgUrl,
+                  alt: `${product.name} - ${firstColor.name} - ${index + 1}`,
+                  colorSlug: firstColor.slug
+                };
+                imagesMap.set(imgUrl, imageData);
+                colorImages.push(imageData);
+              }
+            });
           }
         }
         
-        // 3. Add gallery images (if not duplicate)
-        if (product.images && product.images.length > 0) {
-          product.images.forEach(img => {
-            const imgUrl = getImageUrl(img);
-            if (!imagesMap.has(imgUrl)) {
-              const imageData = {
-                url: imgUrl,
-                alt: `${product.name} - Gallery`,
-                colorSlug: null
-              };
-              imagesMap.set(imgUrl, imageData);
-              otherImages.push(imageData);
-            }
+        // 3. If still no images, use main product image as fallback
+        if (colorImages.length === 0 && product.image) {
+          console.log('   Fallback to main product image')
+          colorImages.push({
+            url: getImageUrl(product.image),
+            alt: product.name,
+            colorSlug: null
           });
         }
         
-        // 4. Add other color variant images (if not duplicate)
-        if (product.variants?.colors && product.variants.colors.length > 0) {
-          console.log('   Adding color images from', product.variants.colors.length, 'colors')
-          product.variants.colors.forEach(color => {
-            console.log('   Color:', color.name, '- images:', color.images)
-            // Skip selected color (already added)
-            if (color.slug === selectedVariant.color) return;
-            
-            if (color.images && color.images.length > 0) {
-              color.images.forEach((img, index) => {
-                const imgUrl = getImageUrl(img);
-                if (!imagesMap.has(imgUrl)) {
-                  const imageData = {
-                    url: imgUrl,
-                    alt: `${product.name} - ${color.name} - ${index + 1}`,
-                    colorSlug: color.slug
-                  };
-                  imagesMap.set(imgUrl, imageData);
-                  otherImages.push(imageData);
-                }
-              });
-            }
-          });
-        }
+        console.log('   Total color images:', colorImages.length)
         
-        // Combine: selected color images first, then others
-        const images = [...selectedColorImages, ...otherImages];
-        console.log('   Total images:', images.length)
-        console.log('   Final images:', images)
-        
-        // Nếu không có ảnh nào, dùng placeholder thay vì mock images
-        if (images.length === 0) {
+        // Nếu không có ảnh nào, dùng placeholder
+        if (colorImages.length === 0) {
           console.warn('No product images found for slug:', slug);
           return [{
-            url: getImageUrl(product.image) || '/images/placeholders/product-placeholder.svg',
+            url: '/images/placeholders/product-placeholder.svg',
             alt: product.name || 'Product image',
             colorSlug: null
           }];
         }
         
-        return images;
+        return colorImages;
       })()
     : [];
 

@@ -1,8 +1,9 @@
-from fastapi import FastAPI, HTTPException, status, Path, Response, Query, Body, Request, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, status, Path, Response, Query, Body, Request, UploadFile, File, Form, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from typing import Optional
+import json
 import mimetypes
 from app.database import users_collection, categories_collection, products_collection, reviews_collection, orders_collection, cart_collection, addresses_collection, coupons_collection, returns_collection, settings_collection, close_db
 from app.cloudinary_uploader import upload_image as cloudinary_upload, upload_multiple_images as cloudinary_upload_multiple, delete_product_images as cloudinary_delete_product, is_cloudinary_configured
@@ -115,6 +116,9 @@ def safe_datetime_to_str(dt):
 # VietQR + Casso payment integration
 import app.payment_vietqr as payment_integration
 import app.schemas as schemas
+
+# WebSocket Manager for realtime updates
+from app.websocket_manager import dashboard_manager, notify_new_order, notify_order_update, notify_dashboard_refresh
 
 # Setup logger
 logger = setup_logging("main_api")
@@ -254,6 +258,64 @@ async def health_check():
 @app.get("/")
 async def root():
     return {"message": "Vyron Fashion API", "status": "running"}
+
+# ==================== WEBSOCKET ENDPOINT ====================
+
+@app.websocket("/ws/admin/dashboard")
+async def websocket_admin_dashboard(websocket: WebSocket, client_id: str = None):
+    """
+    WebSocket endpoint for admin dashboard realtime updates.
+    Connects admin clients to receive live updates about:
+    - New orders
+    - Order status changes
+    - Low stock alerts
+    - Dashboard data updates
+    """
+    await dashboard_manager.connect(websocket, client_id)
+    
+    try:
+        # Send initial connection confirmation
+        await websocket.send_json({
+            "type": "connected",
+            "message": "Connected to admin dashboard WebSocket",
+            "client_id": client_id
+        })
+        
+        # Keep connection alive and listen for messages
+        while True:
+            try:
+                data = await websocket.receive_text()
+                message = json.loads(data)
+                
+                # Handle different message types from client
+                if message.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+                    
+                elif message.get("type") == "request_refresh":
+                    # Client requests fresh dashboard data
+                    # Trigger dashboard data fetch and broadcast
+                    try:
+                        from app.websocket_manager import notify_dashboard_refresh
+                        await notify_dashboard_refresh()
+                    except Exception as e:
+                        print(f"Error triggering refresh: {e}")
+                        
+            except json.JSONDecodeError:
+                print(f"Invalid JSON received from client {client_id}")
+                
+    except WebSocketDisconnect:
+        dashboard_manager.disconnect(websocket)
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+        dashboard_manager.disconnect(websocket)
+
+
+@app.get("/ws/admin/stats")
+async def get_websocket_stats():
+    """Get WebSocket connection statistics"""
+    return dashboard_manager.get_connection_stats()
+
+# ==================== END WEBSOCKET ====================
 
 def remove_accents(input_str):
     import unicodedata
@@ -1295,6 +1357,7 @@ async def get_products(
     category_slug: Optional[str] = Query(None),
     product_status: Optional[str] = Query(None, alias="status"),  # Support both 'status' and 'product_status'
     slug: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),  # Search by name, SKU, slug
     sizes: Optional[str] = Query(None),  # Comma-separated sizes
     colors: Optional[str] = Query(None),  # Comma-separated color slugs
     brands: Optional[str] = Query(None),  # Comma-separated brand slugs
@@ -1309,6 +1372,7 @@ async def get_products(
     - category_slug: Lọc theo category slug
     - status (hoặc product_status): Lọc theo trạng thái (active/inactive)
     - slug: Tìm sản phẩm theo slug
+    - search: Tìm kiếm theo tên, SKU, slug
     - sizes: Filter theo sizes (S,M,L,XL)
     - colors: Filter theo màu sắc (slugs)
     - brands: Filter theo brands (slugs)
@@ -1319,7 +1383,7 @@ async def get_products(
     """
     try:
         # Cache key based on all parameters
-        cache_key = f"{category_slug}_{product_status}_{slug}_{sizes}_{colors}_{brands}_{price_min}_{price_max}_{page}_{limit}_{sort}"
+        cache_key = f"{category_slug}_{product_status}_{slug}_{search}_{sizes}_{colors}_{brands}_{price_min}_{price_max}_{page}_{limit}_{sort}"
         now = datetime.now()
         
         # Check cache (2 minutes for products - frequently updated)
@@ -1335,7 +1399,17 @@ async def get_products(
         
         query = {}
         
-        if slug:
+        # Search by name, SKU, or slug (server-side search)
+        if search:
+            import re
+            search_pattern = re.escape(search)  # Escape special regex characters
+            query["$or"] = [
+                {"name": {"$regex": search_pattern, "$options": "i"}},
+                {"sku": {"$regex": search_pattern, "$options": "i"}},
+                {"slug": {"$regex": search_pattern, "$options": "i"}}
+            ]
+            print(f"🔍 Searching products with: '{search}'")
+        elif slug:
             # Try exact match first, then case-insensitive regex match
             print(f"🔍 Searching for product with slug: '{slug}'")
             
@@ -2708,6 +2782,20 @@ async def create_order(order_data: OrderCreate):
         else:
             shipping_addr_obj = shipping_addr
         
+        # 🔔 WebSocket: Notify admin clients about new order
+        try:
+            await notify_new_order({
+                "id": str(result.inserted_id),
+                "order_number": new_order["order_number"],
+                "customer_name": shipping_addr.get("full_name", "Khách hàng") if isinstance(shipping_addr, dict) else shipping_addr.full_name,
+                "total_amount": new_order["total_amount"],
+                "items_count": len(new_order["items"]),
+                "status": new_order["status"],
+                "created_at": new_order["created_at"]
+            })
+        except Exception as ws_error:
+            print(f"WebSocket notification error: {ws_error}")
+        
         return OrderResponse(
             id=str(result.inserted_id),
             user_id=new_order["user_id"],
@@ -3243,6 +3331,12 @@ async def update_order_status(
             created_at=updated_order.get("created_at", datetime.now().isoformat()),
             updated_at=updated_order.get("updated_at")
         )
+        
+        # 🔔 WebSocket: Notify admin clients about order status update
+        try:
+            await notify_order_update(order_id, status_update.status)
+        except Exception as ws_error:
+            print(f"WebSocket notification error: {ws_error}")
         
         return OrderUpdateResponse(
             success=True,
@@ -4620,52 +4714,90 @@ async def get_dashboard_stats():
         today = now.replace(hour=0, minute=0, second=0, microsecond=0)
         yesterday = today - timedelta(days=1)
         today_end = today + timedelta(days=1)
+        date_30_days_ago = today - timedelta(days=30)
         
         # ========== AGGREGATION PIPELINE - TỐI ƯU ==========
         
-        # 1. Doanh thu và đơn hàng - 1 query duy nhất cho tất cả
-        revenue_pipeline = [
+        # 1A. BIỂU ĐỒ DOANH THU 30 NGÀY - Tất cả đơn hàng theo created_at
+        revenue_chart_pipeline = [
             {
-                "$match": {
-                    "created_at": {"$gte": (today - timedelta(days=14)).isoformat()},
-                    "status": {"$in": ["completed", "delivered", "processing", "shipped"]}
+                "$addFields": {
+                    "amount": {"$ifNull": ["$total_amount", 0]},
+                    "day_str": {
+                        "$switch": {
+                            "branches": [
+                                {
+                                    "case": {"$eq": [{"$type": "$created_at"}, "date"]},
+                                    "then": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}}
+                                },
+                                {
+                                    "case": {"$eq": [{"$type": "$created_at"}, "string"]},
+                                    "then": {"$substr": ["$created_at", 0, 10]}
+                                }
+                            ],
+                            "default": "unknown"
+                        }
+                    }
                 }
             },
             {
-                "$project": {
-                    "total_amount": 1,
-                    "created_at": 1,
-                    "status": 1,
-                    "day": {
-                        "$substr": ["$created_at", 0, 10]  # Extract YYYY-MM-DD
-                    },
-                    "is_today": {
-                        "$eq": [
-                            {"$substr": ["$created_at", 0, 10]},
-                            today.strftime("%Y-%m-%d")
-                        ]
-                    },
-                    "is_yesterday": {
-                        "$eq": [
-                            {"$substr": ["$created_at", 0, 10]},
-                            yesterday.strftime("%Y-%m-%d")
-                        ]
+                "$match": {
+                    "day_str": {
+                        "$gte": date_30_days_ago.strftime("%Y-%m-%d"),
+                        "$ne": "unknown"
                     }
                 }
             },
             {
                 "$group": {
-                    "_id": "$day",
-                    "revenue": {"$sum": "$total_amount"},
-                    "orders_count": {"$sum": 1},
-                    "is_today": {"$first": "$is_today"},
-                    "is_yesterday": {"$first": "$is_yesterday"}
+                    "_id": "$day_str",
+                    "revenue": {"$sum": "$amount"},
+                    "orders_count": {"$sum": 1}
                 }
             },
             {"$sort": {"_id": 1}}
         ]
         
-        # 2. Customers mới
+        # 1B. KPI HÔM NAY - Doanh thu và đơn hàng theo created_at (ngày đặt hàng)
+        today_kpi_pipeline = [
+            {
+                "$addFields": {
+                    "amount": {"$ifNull": ["$total_amount", 0]},
+                    "day_str": {
+                        "$switch": {
+                            "branches": [
+                                {
+                                    "case": {"$eq": [{"$type": "$created_at"}, "date"]},
+                                    "then": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}}
+                                },
+                                {
+                                    "case": {"$eq": [{"$type": "$created_at"}, "string"]},
+                                    "then": {"$substr": ["$created_at", 0, 10]}
+                                }
+                            ],
+                            "default": "unknown"
+                        }
+                    }
+                }
+            },
+            {
+                "$match": {
+                    "day_str": {
+                        "$gte": yesterday.strftime("%Y-%m-%d"),
+                        "$ne": "unknown"
+                    }
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$day_str",
+                    "revenue": {"$sum": "$amount"},
+                    "orders_count": {"$sum": 1}
+                }
+            }
+        ]
+        
+        # 2. Customers mới (hôm nay và hôm qua)
         customers_pipeline = [
             {
                 "$match": {
@@ -4753,43 +4885,61 @@ async def get_dashboard_stats():
         ]
         
         # ========== CHẠY TẤT CẢ QUERIES SONG SONG ==========
-        revenue_data, customers_data, pending_orders_data, low_stock_data = await asyncio.gather(
-            orders_collection.aggregate(revenue_pipeline).to_list(length=None),
+        revenue_chart_data_raw, today_kpi_data, customers_data, pending_orders_data, low_stock_data = await asyncio.gather(
+            orders_collection.aggregate(revenue_chart_pipeline).to_list(length=None),
+            orders_collection.aggregate(today_kpi_pipeline).to_list(length=None),
             users_collection.aggregate(customers_pipeline).to_list(length=None),
             orders_collection.aggregate(pending_orders_pipeline).to_list(length=None),
             products_collection.aggregate(low_stock_pipeline).to_list(length=None)
         )
         
+        # DEBUG: Log data
+        print(f"📊 DEBUG Dashboard - Revenue chart data count: {len(revenue_chart_data_raw)}")
+        for item in revenue_chart_data_raw:
+            print(f"   - Day: {item.get('_id')}, Revenue: {item.get('revenue')}, Orders: {item.get('orders_count')}")
+        print(f"📊 DEBUG Dashboard - Today KPI data: {today_kpi_data}")
+        
         # ========== XỬ LÝ KẾT QUẢ ==========
         
-        # Revenue & Orders
+        # KPI HÔM NAY - Doanh thu và đơn hàng theo ngày đặt (created_at)
+        today_str = today.strftime("%Y-%m-%d")
+        yesterday_str = yesterday.strftime("%Y-%m-%d")
         today_revenue = 0
         yesterday_revenue = 0
         today_orders_count = 0
         yesterday_orders_count = 0
-        revenue_chart_data = []
         
-        for item in revenue_data:
-            revenue = item.get("revenue", 0)
-            orders = item.get("orders_count", 0)
+        for item in today_kpi_data:
+            day_id = item.get("_id", "")
+            revenue = item.get("revenue", 0) or 0
+            orders = item.get("orders_count", 0) or 0
             
-            if item.get("is_today"):
+            if day_id == today_str:
                 today_revenue = revenue
                 today_orders_count = orders
-            if item.get("is_yesterday"):
+            elif day_id == yesterday_str:
                 yesterday_revenue = revenue
                 yesterday_orders_count = orders
+        
+        # BIỂU ĐỒ 30 NGÀY - Doanh thu đơn completed theo updated_at
+        revenue_chart_data = []
+        
+        for item in revenue_chart_data_raw:
+            revenue = item.get("revenue", 0) or 0
+            day_id = item.get("_id", "")
             
-            # Chart data (14 ngày gần nhất)
+            # Chart data (30 ngày gần nhất - chỉ ngày có data)
             try:
-                date_str = datetime.strptime(item["_id"], "%Y-%m-%d").strftime("%d/%m")
+                date_str = datetime.strptime(day_id, "%Y-%m-%d").strftime("%d/%m")
             except:
-                date_str = item["_id"][-5:]  # Fallback: lấy MM-DD
+                date_str = day_id[-5:] if len(day_id) >= 5 else day_id  # Fallback
             
             revenue_chart_data.append(DashboardRevenueData(
                 date=date_str,
-                revenue=revenue
+                revenue=int(revenue)
             ))
+        
+        print(f"📈 Revenue chart data count: {len(revenue_chart_data)}")
         
         # Tính % thay đổi
         revenue_change = ((today_revenue - yesterday_revenue) / yesterday_revenue * 100) if yesterday_revenue > 0 else 0
@@ -4899,10 +5049,92 @@ async def get_dashboard_stats():
         
     except Exception as e:
         print(f"❌ Error in dashboard: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lỗi server: {str(e)}"
         )
+
+# Debug endpoint để kiểm tra dữ liệu orders
+@app.get("/api/admin/dashboard/debug")
+async def debug_dashboard():
+    """Debug endpoint để kiểm tra dữ liệu đơn hàng"""
+    try:
+        from datetime import datetime, timedelta
+        
+        now = datetime.now()
+        today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        date_30_days_ago = today - timedelta(days=30)
+        
+        # Đếm tổng orders
+        total_orders = await orders_collection.count_documents({})
+        
+        # Lấy 5 orders gần nhất
+        recent_orders = await orders_collection.find().sort("created_at", -1).limit(5).to_list(length=5)
+        
+        # Chạy pipeline
+        pipeline = [
+            {
+                "$addFields": {
+                    "amount": {"$ifNull": ["$total_amount", 0]},
+                    "day_str": {
+                        "$switch": {
+                            "branches": [
+                                {
+                                    "case": {"$eq": [{"$type": "$created_at"}, "date"]},
+                                    "then": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}}
+                                },
+                                {
+                                    "case": {"$eq": [{"$type": "$created_at"}, "string"]},
+                                    "then": {"$substr": ["$created_at", 0, 10]}
+                                }
+                            ],
+                            "default": "unknown"
+                        }
+                    }
+                }
+            },
+            {
+                "$match": {
+                    "day_str": {
+                        "$gte": date_30_days_ago.strftime("%Y-%m-%d"),
+                        "$ne": "unknown"
+                    }
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$day_str",
+                    "revenue": {"$sum": "$amount"},
+                    "orders_count": {"$sum": 1}
+                }
+            },
+            {"$sort": {"_id": 1}}
+        ]
+        
+        chart_data = await orders_collection.aggregate(pipeline).to_list(length=None)
+        
+        return {
+            "total_orders": total_orders,
+            "date_30_days_ago": date_30_days_ago.strftime("%Y-%m-%d"),
+            "today": today.strftime("%Y-%m-%d"),
+            "recent_orders": [
+                {
+                    "id": str(o.get("_id")),
+                    "order_number": o.get("order_number"),
+                    "total_amount": o.get("total_amount"),
+                    "status": o.get("status"),
+                    "created_at": str(o.get("created_at")),
+                    "created_at_type": type(o.get("created_at")).__name__
+                }
+                for o in recent_orders
+            ],
+            "chart_data": chart_data
+        }
+    except Exception as e:
+        import traceback
+        return {"error": str(e), "traceback": traceback.format_exc()}
 
 # ==================== SECURITY API (2FA & PASSWORD) ====================
 

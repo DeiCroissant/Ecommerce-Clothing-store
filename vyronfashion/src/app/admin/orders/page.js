@@ -1,14 +1,29 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Search, Filter, Package, Eye, ChevronDown, ChevronUp, User, Phone, Calendar, DollarSign, MapPin, Mail } from 'lucide-react'
+import { Search, Filter, Package, Eye, ChevronDown, ChevronUp, User, Phone, Calendar, DollarSign, MapPin, Mail, RefreshCw } from 'lucide-react'
 import { formatCurrency } from '@/lib/formatCurrency'
 import { formatDate } from '@/lib/mockOrdersData'
 import * as adminOrderAPI from '@/lib/api/adminOrders'
 import Link from 'next/link'
 import '@/styles/admin-design-system.css'
 import '@/styles/admin-components.css'
+
+// Custom hook for debounce
+function useDebounce(value, delay) {
+  const [debouncedValue, setDebouncedValue] = useState(value)
+  
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value)
+    }, delay)
+    
+    return () => clearTimeout(handler)
+  }, [value, delay])
+  
+  return debouncedValue
+}
 
 function getCurrentUser() {
   if (typeof window === 'undefined') return null;
@@ -75,12 +90,19 @@ export default function AdminOrdersPage() {
   const [orders, setOrders] = useState([]);
   const [allOrders, setAllOrders] = useState([]); // Store all orders for stats
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [limit] = useState(20);
   const [expandedOrder, setExpandedOrder] = useState(null);
+  
+  // Debounced search
+  const debouncedSearch = useDebounce(searchQuery, 300);
+  
+  // Cache ref
+  const cacheRef = useRef({});
 
   // Read status from URL query parameter
   useEffect(() => {
@@ -89,17 +111,30 @@ export default function AdminOrdersPage() {
       setStatusFilter(statusFromUrl);
     }
   }, [searchParams]);
-
+  
+  // Reset page when filter/search changes
   useEffect(() => {
+    setPage(1);
+  }, [statusFilter, debouncedSearch]);
+
+  const fetchOrders = useCallback(async (forceRefresh = false) => {
     const user = getCurrentUser();
     if (!user || user.role !== 'admin') {
       router.push('/');
       return;
     }
-    fetchOrders();
-  }, [router, statusFilter, page, searchQuery]);
-
-  const fetchOrders = async () => {
+    
+    const cacheKey = `${statusFilter}_${debouncedSearch}_${page}`;
+    
+    // Check cache
+    if (!forceRefresh && cacheRef.current[cacheKey]) {
+      const cached = cacheRef.current[cacheKey];
+      setOrders(cached.orders);
+      setAllOrders(cached.allOrders);
+      setTotal(cached.total);
+      return;
+    }
+    
     try {
       setLoading(true);
       
@@ -111,12 +146,12 @@ export default function AdminOrdersPage() {
         backendStatusFilter = null; // Will fetch all and filter client-side
       }
       
-      // Fetch orders from backend (backend limit is 100, so we fetch page 1 with limit 100)
+      // Fetch orders from backend
       const response = await adminOrderAPI.getAllOrders({
         status: backendStatusFilter === 'all' ? undefined : backendStatusFilter,
         page: 1,
-        limit: 100, // Backend max limit
-        search: searchQuery || undefined,
+        limit: 100,
+        search: debouncedSearch || undefined,
       });
       
       // Filter on client side for display status
@@ -155,9 +190,17 @@ export default function AdminOrdersPage() {
         note: order.note || '',
       }));
       
+      // Cache result
+      cacheRef.current[cacheKey] = {
+        orders: transformedOrders,
+        allOrders: filteredOrders,
+        total: filteredTotal
+      };
+      
       setOrders(transformedOrders);
       setTotal(filteredTotal);
       setLoading(false);
+      setRefreshing(false);
     } catch (error) {
       console.error('Error fetching orders:', error);
       if (typeof window !== 'undefined') {
@@ -169,7 +212,19 @@ export default function AdminOrdersPage() {
       setAllOrders([]);
       setTotal(0);
       setLoading(false);
+      setRefreshing(false);
     }
+  }, [router, statusFilter, debouncedSearch, page, limit]);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
+  
+  // Refresh handler
+  const handleRefresh = () => {
+    setRefreshing(true);
+    cacheRef.current = {};
+    fetchOrders(true);
   };
 
   const handleStatusChange = async (orderId, newStatus) => {
@@ -182,7 +237,9 @@ export default function AdminOrdersPage() {
         // Dispatch event to notify customer side to refresh
         window.dispatchEvent(new CustomEvent('ordersChanged'));
       }
-      fetchOrders(); // Refresh list
+      // Clear cache and refresh
+      cacheRef.current = {};
+      fetchOrders(true);
     } catch (error) {
       console.error('Error updating order status:', error);
       if (typeof window !== 'undefined') {
@@ -219,7 +276,8 @@ export default function AdminOrdersPage() {
       <div style={{ marginBottom: 'var(--space-8)' }}>
         <div style={{ 
           display: 'flex', 
-          flexDirection: 'column', 
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
           gap: 'var(--space-6)',
           marginBottom: 'var(--space-8)'
         }}>
@@ -240,6 +298,16 @@ export default function AdminOrdersPage() {
               Theo dõi và quản lý tất cả đơn hàng của khách hàng
             </p>
           </div>
+          <button
+            className="admin-btn admin-btn-secondary"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title="Làm mới dữ liệu"
+          >
+            <RefreshCw size={20} style={{ 
+              animation: refreshing ? 'spin 1s linear infinite' : 'none' 
+            }} />
+          </button>
         </div>
 
         {/* Stats Cards */}

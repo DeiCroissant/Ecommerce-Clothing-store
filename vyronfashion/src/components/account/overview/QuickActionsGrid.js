@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { ShoppingBag, Gift, Heart, MapPin, ArrowRight } from 'lucide-react'
+import { ShoppingBag, Heart, MapPin, ArrowRight } from 'lucide-react'
 import * as orderAPI from '@/lib/api/orders'
 import * as wishlistAPI from '@/lib/api/wishlist'
 import * as addressAPI from '@/lib/api/addresses'
@@ -91,15 +91,6 @@ export function QuickActionsGrid() {
       label: 'đơn hàng',
       href: '/account/orders',
       color: '#3b82f6',
-    },
-    {
-      id: 'vouchers',
-      title: 'Voucher',
-      icon: Gift,
-      value: 0, // Vouchers chưa có API, để 0 hoặc có thể implement sau
-      label: 'khả dụng',
-      href: '/account/credits',
-      color: '#f59e0b',
     },
     {
       id: 'wishlist',

@@ -62,20 +62,9 @@ const navigationGroups = [
         label: 'Marketing', 
         icon: Tag,
         submenu: [
-          { href: '/admin/marketing/coupons', label: 'Mã giảm giá' },
-          { href: '/admin/marketing/campaigns', label: 'Chiến dịch' }
+          { href: '/admin/marketing/coupons', label: 'Mã giảm giá' }
         ]
-      },
-      { 
-        href: '/admin/cms', 
-        label: 'CMS', 
-        icon: FileText,
-        submenu: [
-          { href: '/admin/cms/banners', label: 'Banner' },
-          { href: '/admin/cms/pages', label: 'Trang' }
-        ]
-      },
-      { href: '/admin/analytics', label: 'Phân tích', icon: BarChart3 }
+      }
     ]
   },
   {
@@ -154,7 +143,7 @@ export function AdminSidebar() {
             </button>
           ) : (
             <>
-              <Link href="/admin" className="sidebar-logo">
+              <Link href="/" className="sidebar-logo" title="Về trang chủ">
                 <div className="sidebar-logo-icon">
                   <Sparkles size={20} />
                 </div>

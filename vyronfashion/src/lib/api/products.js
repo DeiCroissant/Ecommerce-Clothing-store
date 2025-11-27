@@ -10,6 +10,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
  * @param {Object} params - Query parameters
  * @param {string} params.category_slug - Lọc theo category slug
  * @param {string} params.status - Lọc theo trạng thái (active/inactive)
+ * @param {string} params.search - Tìm kiếm theo tên/SKU/slug
  * @param {number} params.page - Trang hiện tại
  * @param {number} params.limit - Số lượng mỗi trang
  * @param {string} params.sort - Sắp xếp (newest, price_asc, price_desc, etc.)
@@ -23,6 +24,9 @@ export async function getProducts(params = {}) {
     if (params.status) {
       queryParams.append('status', params.status)
     }
+    if (params.search) {
+      queryParams.append('search', params.search)
+    }
     if (params.page) {
       queryParams.append('page', params.page)
     }
@@ -34,7 +38,6 @@ export async function getProducts(params = {}) {
     }
     
     const url = `${API_BASE_URL}/api/products${queryParams.toString() ? '?' + queryParams.toString() : ''}`
-    console.log('Fetching products from:', url)
     const response = await fetch(url)
     
     if (!response.ok) {
@@ -44,7 +47,6 @@ export async function getProducts(params = {}) {
     }
     
     const data = await response.json()
-    console.log('Products response:', data)
     return data
   } catch (error) {
     console.error('Error fetching products:', error)

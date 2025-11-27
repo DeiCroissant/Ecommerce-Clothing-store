@@ -126,48 +126,6 @@ export const adminNavigation = [
         label: 'Mã giảm giá',
         description: 'Quản lý coupon và voucher',
         icon: Ticket
-      },
-      {
-        href: '/admin/campaigns',
-        label: 'Chiến dịch',
-        description: 'Chiến dịch và khuyến mãi',
-        icon: Megaphone
-      }
-    ]
-  },
-  {
-    id: 'content',
-    title: 'Nội dung (CMS)',
-    items: [
-      {
-        href: '/admin/banners',
-        label: 'Banners',
-        description: 'Quản lý hero banners',
-        icon: ImageIcon
-      },
-      {
-        href: '/admin/pages',
-        label: 'Trang tĩnh',
-        description: 'Về chúng tôi, Chính sách, v.v.',
-        icon: FileCode
-      }
-    ]
-  },
-  {
-    id: 'analytics',
-    title: 'Phân tích',
-    items: [
-      {
-        href: '/admin/analytics/revenue',
-        label: 'Báo cáo doanh thu',
-        description: 'Thống kê doanh thu',
-        icon: TrendingUp
-      },
-      {
-        href: '/admin/analytics/products',
-        label: 'Báo cáo sản phẩm',
-        description: 'Top sản phẩm, tồn kho',
-        icon: PieChart
       }
     ]
   },

@@ -3,14 +3,9 @@ import {
   Package, 
   Heart, 
   MapPin, 
-  CreditCard,
-  Settings, 
-  Bell,
   Shield,
   RefreshCw,
-  Eye,
-  Ruler,
-  Gift
+  Settings
 } from 'lucide-react'
 
 /**
@@ -39,12 +34,6 @@ export const accountNavigation = [
         label: 'Địa chỉ',
         description: 'Quản lý địa chỉ giao hàng',
         icon: MapPin
-      },
-      {
-        href: '/account/payments',
-        label: 'Thanh toán',
-        description: 'Quản lý phương thức thanh toán',
-        icon: CreditCard
       }
     ]
   },
@@ -75,18 +64,6 @@ export const accountNavigation = [
         label: 'Danh sách yêu thích',
         description: 'Sản phẩm bạn đã lưu',
         icon: Heart
-      },
-      {
-        href: '/account/fit-profile',
-        label: 'Số đo của tôi',
-        description: 'Quản lý thông tin số đo',
-        icon: Ruler
-      },
-      {
-        href: '/account/credits',
-        label: 'Tín dụng & Voucher',
-        description: 'Xem tín dụng và voucher',
-        icon: Gift
       }
     ]
   },
@@ -95,28 +72,10 @@ export const accountNavigation = [
     title: 'Cài đặt',
     items: [
       {
-        href: '/account/notifications',
-        label: 'Thông báo',
-        description: 'Cài đặt thông báo',
-        icon: Bell
-      },
-      {
-        href: '/account/preferences',
-        label: 'Tuỳ chọn',
-        description: 'Tuỳ chỉnh trải nghiệm',
-        icon: Settings
-      },
-      {
         href: '/account/security',
         label: 'Bảo mật',
         description: 'Mật khẩu và bảo mật',
         icon: Shield
-      },
-      {
-        href: '/account/privacy',
-        label: 'Quyền riêng tư',
-        description: 'Quản lý dữ liệu cá nhân',
-        icon: Eye
       }
     ]
   }
