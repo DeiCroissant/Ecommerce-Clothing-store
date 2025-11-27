@@ -66,12 +66,12 @@ export function UserWelcome({ user }) {
             {user.emailVerified ? (
               <span className="badge-modern verified">
                 <CheckCircle size={14} />
-                Đã xác thực
+                Đã xác thực email
               </span>
             ) : (
               <span className="badge-modern unverified">
                 <XCircle size={14} />
-                Chưa xác thực
+                Chưa xác thực email
               </span>
             )}
           </div>
