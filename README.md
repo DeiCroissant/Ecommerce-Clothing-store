@@ -153,21 +153,6 @@ Frontend sẽ chạy tại: `http://localhost:3000`
 
 ---
 
-## ⚡ Khởi động nhanh (Windows)
-
-Sử dụng các file batch có sẵn:
-
-```bash
-# Khởi động cả Backend và Frontend
-START_ALL.bat
-
-# Hoặc khởi động riêng lẻ
-START_BACKEND.bat   # Chỉ Backend
-START_FRONTEND.bat  # Chỉ Frontend
-```
-
----
-
 ## 📁 Cấu trúc dự án
 
 ```
@@ -194,11 +179,6 @@ Ecommerce-Clothing-store/
 
 ---
 
-## 📸 Screenshots
-
-> *Thêm ảnh chụp màn hình website tại đây*
-
----
 
 ## 📄 License
 
