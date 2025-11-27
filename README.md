@@ -177,9 +177,6 @@ Ecommerce-Clothing-store/
 └── README.md
 ```
 
----
-
-
 ## 📄 License
 
 Dự án này được phát triển cho mục đích học tập tại **Trường Đại học Văn Lang**.
