@@ -875,6 +875,30 @@ async def forgot_password(request: ForgotPasswordRequest):
             detail=f"Lỗi server: {str(e)}"
         )
 
+@app.get("/api/auth/verify-reset-token")
+async def verify_reset_token(token: str = Query(...)):
+    """Xác minh token reset password còn hợp lệ không"""
+    try:
+        if not token:
+            return {"valid": False, "reason": "missing_token", "message": "Không tìm thấy token"}
+        
+        # Tìm user với token
+        user = await users_collection.find_one({
+            "resetPasswordToken": token
+        })
+        
+        if not user:
+            return {"valid": False, "reason": "used_or_invalid", "message": "Link đã được sử dụng hoặc không hợp lệ"}
+        
+        # Kiểm tra hết hạn
+        expires_at = user.get("resetPasswordExpires")
+        if not expires_at or expires_at < datetime.now():
+            return {"valid": False, "reason": "expired", "message": "Link đã hết hạn. Vui lòng yêu cầu link mới."}
+        
+        return {"valid": True, "message": "Token hợp lệ"}
+    except Exception as e:
+        return {"valid": False, "reason": "error", "message": "Có lỗi xảy ra"}
+
 @app.post("/api/auth/reset-password", response_model=ResetPasswordResponse)
 async def reset_password(request: ResetPasswordRequest):
     """Đặt lại mật khẩu với token"""
@@ -3142,6 +3166,62 @@ async def get_order_by_id(order_id: str = Path(...)):
         )
 
 # ==================== ADMIN ORDERS API ====================
+
+# Cache cho order stats
+admin_order_stats_cache = {"data": None, "timestamp": None}
+ORDER_STATS_CACHE_DURATION = 60  # 1 phút
+
+@app.get("/api/admin/orders/stats")
+async def get_order_stats():
+    """Lấy thống kê số lượng đơn hàng theo trạng thái - NHANH"""
+    try:
+        now = datetime.now()
+        
+        # Check cache
+        if admin_order_stats_cache.get("data"):
+            cache_age = (now - admin_order_stats_cache["timestamp"]).total_seconds()
+            if cache_age < ORDER_STATS_CACHE_DURATION:
+                return admin_order_stats_cache["data"]
+        
+        # Base query: Exclude awaiting_payment orders
+        base_query = {
+            "$or": [
+                {"payment_status": {"$exists": False}},
+                {"payment_status": {"$ne": "awaiting_payment"}}
+            ]
+        }
+        
+        # Count all statuses in parallel
+        pending_task = orders_collection.count_documents({**base_query, "status": {"$in": ["pending", "processing"]}})
+        shipped_task = orders_collection.count_documents({**base_query, "status": {"$in": ["shipped", "delivered"]}})
+        completed_task = orders_collection.count_documents({**base_query, "status": "completed"})
+        cancelled_task = orders_collection.count_documents({**base_query, "status": "cancelled"})
+        total_task = orders_collection.count_documents(base_query)
+        
+        pending, shipped, completed, cancelled, total = await asyncio.gather(
+            pending_task, shipped_task, completed_task, cancelled_task, total_task
+        )
+        
+        result = {
+            "pending": pending,
+            "shipped": shipped,
+            "completed": completed,
+            "cancelled": cancelled,
+            "total": total
+        }
+        
+        # Cache result
+        admin_order_stats_cache["data"] = result
+        admin_order_stats_cache["timestamp"] = now
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
 @app.get("/api/admin/orders/count/pending")
 async def get_pending_orders_count():
     """Đếm số đơn hàng đang chờ xử lý (pending hoặc processing)"""
@@ -3203,9 +3283,16 @@ async def get_all_orders(
             ]
         }
         
-        # Filter by status
+        # Filter by status - hỗ trợ gộp nhiều status
         if status and status != 'all':
-            query["status"] = status
+            if status == 'pending':
+                # pending bao gồm pending và processing
+                query["status"] = {"$in": ["pending", "processing"]}
+            elif status == 'shipped':
+                # shipped bao gồm shipped và delivered  
+                query["status"] = {"$in": ["shipped", "delivered"]}
+            else:
+                query["status"] = status
         
         # Search by order number or customer name
         if search:
@@ -3825,6 +3912,54 @@ async def delete_address(address_id: str = Path(...)):
         )
 
 # ==================== ADMIN CUSTOMER MANAGEMENT ====================
+
+# Cache cho customer stats
+admin_customer_stats_cache = {"data": None, "timestamp": None}
+CUSTOMER_STATS_CACHE_DURATION = 120  # 2 phút
+
+@app.get("/api/admin/customers/stats")
+async def get_customer_stats():
+    """Lấy thống kê số lượng khách hàng - NHANH"""
+    try:
+        now = datetime.now()
+        
+        # Check cache
+        if admin_customer_stats_cache.get("data"):
+            cache_age = (now - admin_customer_stats_cache["timestamp"]).total_seconds()
+            if cache_age < CUSTOMER_STATS_CACHE_DURATION:
+                return admin_customer_stats_cache["data"]
+        
+        # Count in parallel
+        total_task = users_collection.count_documents({})
+        admin_task = users_collection.count_documents({"role": "admin"})
+        user_task = users_collection.count_documents({"role": {"$ne": "admin"}})
+        banned_task = users_collection.count_documents({"is_banned": True})
+        verified_task = users_collection.count_documents({"emailVerified": True})
+        
+        total, admin_count, user_count, banned, verified = await asyncio.gather(
+            total_task, admin_task, user_task, banned_task, verified_task
+        )
+        
+        result = {
+            "total": total,
+            "admins": admin_count,
+            "users": user_count,
+            "banned": banned,
+            "verified": verified,
+            "active": total - banned
+        }
+        
+        # Cache result
+        admin_customer_stats_cache["data"] = result
+        admin_customer_stats_cache["timestamp"] = now
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi server: {str(e)}"
+        )
 
 @app.get("/api/admin/customers", response_model=CustomerListResponse)
 async def get_all_customers(

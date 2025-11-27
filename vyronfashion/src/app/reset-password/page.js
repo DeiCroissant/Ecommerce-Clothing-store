@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { LockClosedIcon, EyeIcon, EyeSlashIcon, ExclamationCircleIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { LockClosedIcon, EyeIcon, EyeSlashIcon, ExclamationCircleIcon, CheckCircleIcon, ClockIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { API_BASE_URL } from '@/lib/config';
 
 function cls(...args) { return args.filter(Boolean).join(' '); }
@@ -18,14 +18,47 @@ export default function ResetPasswordPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [verifying, setVerifying] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [message, setMessage] = useState('');
+  const [tokenStatus, setTokenStatus] = useState(null); // null, 'valid', 'used', 'expired', 'invalid'
 
+  // Verify token khi load trang
   useEffect(() => {
-    if (!token) {
-      setError('Link không hợp lệ. Vui lòng kiểm tra lại email.');
-    }
+    const verifyToken = async () => {
+      if (!token) {
+        setTokenStatus('invalid');
+        setVerifying(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/verify-reset-token?token=${encodeURIComponent(token)}`);
+        const data = await response.json();
+        
+        if (data.valid) {
+          setTokenStatus('valid');
+        } else {
+          // Phân biệt các lý do token không hợp lệ
+          if (data.reason === 'expired') {
+            setTokenStatus('expired');
+          } else if (data.reason === 'used_or_invalid') {
+            setTokenStatus('used');
+          } else {
+            setTokenStatus('invalid');
+          }
+          setError(data.message || 'Link không hợp lệ');
+        }
+      } catch (err) {
+        setTokenStatus('invalid');
+        setError('Không thể xác minh link. Vui lòng thử lại.');
+      } finally {
+        setVerifying(false);
+      }
+    };
+
+    verifyToken();
   }, [token]);
 
   const handleSubmit = async (e) => {
@@ -77,7 +110,82 @@ export default function ResetPasswordPage() {
     }
   };
 
-  if (!token) {
+  // Loading state khi đang verify token
+  if (verifying) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 px-4">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8">
+          <div className="text-center">
+            <div className="w-16 h-16 bg-zinc-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <ArrowPathIcon className="w-8 h-8 text-zinc-600 animate-spin" />
+            </div>
+            <h1 className="text-xl font-bold text-zinc-900 mb-2">Đang xác minh link...</h1>
+            <p className="text-zinc-600">Vui lòng đợi trong giây lát</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Token đã được sử dụng
+  if (tokenStatus === 'used') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 px-4">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8">
+          <div className="text-center">
+            <CheckCircleIcon className="w-16 h-16 text-green-500 mx-auto mb-4" />
+            <h1 className="text-2xl font-bold text-zinc-900 mb-2">Link đã được sử dụng</h1>
+            <p className="text-zinc-600 mb-2">Mật khẩu của bạn đã được đặt lại thành công.</p>
+            <p className="text-zinc-500 text-sm mb-6">Mỗi link chỉ có thể sử dụng một lần để đảm bảo bảo mật.</p>
+            <div className="space-y-3">
+              <Link
+                href="/"
+                className="inline-block w-full px-6 py-3 bg-black text-white rounded-lg font-semibold hover:bg-zinc-800 transition-colors text-center"
+              >
+                Đăng nhập ngay
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Token hết hạn
+  if (tokenStatus === 'expired') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 px-4">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8">
+          <div className="text-center">
+            <ClockIcon className="w-16 h-16 text-orange-500 mx-auto mb-4" />
+            <h1 className="text-2xl font-bold text-zinc-900 mb-2">Link đã hết hạn</h1>
+            <p className="text-zinc-600 mb-2">Link đặt lại mật khẩu chỉ có hiệu lực trong 1 giờ.</p>
+            <p className="text-zinc-500 text-sm mb-6">Vui lòng yêu cầu link mới để đặt lại mật khẩu.</p>
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  // Mở modal quên mật khẩu trên trang chủ
+                  router.push('/?forgot=1');
+                }}
+                className="inline-block w-full px-6 py-3 bg-black text-white rounded-lg font-semibold hover:bg-zinc-800 transition-colors"
+              >
+                Yêu cầu link mới
+              </button>
+              <Link
+                href="/"
+                className="inline-block w-full px-6 py-3 border border-zinc-300 text-zinc-700 rounded-lg font-semibold hover:bg-zinc-50 transition-colors text-center"
+              >
+                Về trang chủ
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Token không hợp lệ
+  if (tokenStatus === 'invalid' || !token) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-50 px-4">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8">
@@ -97,6 +205,7 @@ export default function ResetPasswordPage() {
     );
   }
 
+  // Token hợp lệ - hiển thị form đổi mật khẩu
   return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-50 px-4">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8">
@@ -151,7 +260,7 @@ export default function ResetPasswordPage() {
                   {showPassword ? <EyeSlashIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
                 </button>
               </div>
-              <p className="text-xs text-zinc-500 mt-1">Mật khẩu phải có ít nhất 8 ký tự</p>
+              <p className="text-xs text-zinc-500 mt-1">Mật khẩu phải có ít nhất 8 ký tự, 1 chữ hoa và 1 ký tự đặc biệt</p>
             </div>
 
             <div>

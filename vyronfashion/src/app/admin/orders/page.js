@@ -88,7 +88,7 @@ export default function AdminOrdersPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [orders, setOrders] = useState([]);
-  const [allOrders, setAllOrders] = useState([]); // Store all orders for stats
+  const [orderStats, setOrderStats] = useState({ pending: 0, shipped: 0, completed: 0, cancelled: 0, total: 0 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState('pending'); // Default: Chỉ load đơn cần xác nhận
@@ -117,6 +117,19 @@ export default function AdminOrdersPage() {
     setPage(1);
   }, [statusFilter, debouncedSearch]);
 
+  // Fetch order stats (chỉ 1 lần khi load, hoặc khi refresh)
+  const fetchOrderStats = useCallback(async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/admin/orders/stats`);
+      if (response.ok) {
+        const stats = await response.json();
+        setOrderStats(stats);
+      }
+    } catch (error) {
+      console.error('Error fetching order stats:', error);
+    }
+  }, []);
+
   const fetchOrders = useCallback(async (forceRefresh = false) => {
     const user = getCurrentUser();
     if (!user || user.role !== 'admin') {
@@ -130,53 +143,24 @@ export default function AdminOrdersPage() {
     if (!forceRefresh && cacheRef.current[cacheKey]) {
       const cached = cacheRef.current[cacheKey];
       setOrders(cached.orders);
-      setAllOrders(cached.allOrders);
       setTotal(cached.total);
+      setLoading(false);
       return;
     }
     
     try {
       setLoading(true);
       
-      // Determine which statuses to fetch from backend
-      let backendStatusFilter = statusFilter;
-      if (statusFilter === 'pending') {
-        backendStatusFilter = null; // Will fetch all and filter client-side
-      } else if (statusFilter === 'shipped') {
-        backendStatusFilter = null; // Will fetch all and filter client-side
-      }
-      
-      // Fetch orders from backend
+      // Backend now supports 'pending' and 'shipped' as combined filters
+      // So we can send status directly to backend
       const response = await adminOrderAPI.getAllOrders({
-        status: backendStatusFilter === 'all' ? undefined : backendStatusFilter,
-        page: 1,
-        limit: 100,
+        status: statusFilter === 'all' ? undefined : statusFilter,
+        page: page,
+        limit: limit,
         search: debouncedSearch || undefined,
       });
       
-      // Filter on client side for display status
-      let filteredOrders = response.orders || [];
-      
-      if (statusFilter === 'pending') {
-        filteredOrders = filteredOrders.filter(o => o.status === 'pending' || o.status === 'processing');
-      } else if (statusFilter === 'shipped') {
-        filteredOrders = filteredOrders.filter(o => o.status === 'shipped' || o.status === 'delivered');
-      } else if (statusFilter !== 'all' && statusFilter !== 'pending' && statusFilter !== 'shipped') {
-        filteredOrders = filteredOrders.filter(o => o.status === statusFilter);
-      }
-      
-      // Store all orders for stats calculation
-      setAllOrders(filteredOrders);
-      
-      // Apply pagination after filtering
-      const startIndex = (page - 1) * limit;
-      const endIndex = startIndex + limit;
-      const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
-      
-      // Update total count
-      const filteredTotal = filteredOrders.length;
-      
-      const transformedOrders = paginatedOrders.map(order => ({
+      const transformedOrders = (response.orders || []).map(order => ({
         id: order.id || order._id,
         orderNumber: order.order_number || order.orderNumber,
         status: order.status || 'pending',
@@ -193,12 +177,11 @@ export default function AdminOrdersPage() {
       // Cache result
       cacheRef.current[cacheKey] = {
         orders: transformedOrders,
-        allOrders: filteredOrders,
-        total: filteredTotal
+        total: response.total || 0
       };
       
       setOrders(transformedOrders);
-      setTotal(filteredTotal);
+      setTotal(response.total || 0);
       setLoading(false);
       setRefreshing(false);
     } catch (error) {
@@ -209,12 +192,16 @@ export default function AdminOrdersPage() {
         }));
       }
       setOrders([]);
-      setAllOrders([]);
       setTotal(0);
       setLoading(false);
       setRefreshing(false);
     }
   }, [router, statusFilter, debouncedSearch, page, limit]);
+
+  // Fetch stats once on mount
+  useEffect(() => {
+    fetchOrderStats();
+  }, [fetchOrderStats]);
 
   useEffect(() => {
     fetchOrders();
@@ -224,6 +211,7 @@ export default function AdminOrdersPage() {
   const handleRefresh = () => {
     setRefreshing(true);
     cacheRef.current = {};
+    fetchOrderStats(); // Also refresh stats
     fetchOrders(true);
   };
 
@@ -237,8 +225,9 @@ export default function AdminOrdersPage() {
         // Dispatch event to notify customer side to refresh
         window.dispatchEvent(new CustomEvent('ordersChanged'));
       }
-      // Clear cache and refresh
+      // Clear cache and refresh orders + stats
       cacheRef.current = {};
+      fetchOrderStats(); // Refresh stats when order status changes
       fetchOrders(true);
     } catch (error) {
       console.error('Error updating order status:', error);
@@ -312,7 +301,7 @@ export default function AdminOrdersPage() {
 
         {/* Stats Cards */}
         <div className="admin-grid admin-grid-cols-4" style={{ marginBottom: 'var(--space-8)' }}>
-          <div className="metric-card">
+          <div className="metric-card" style={{ cursor: 'pointer' }} onClick={() => setStatusFilter('pending')}>
             <div className="metric-card-header">
               <div className="metric-card-title">Chờ xác nhận</div>
               <div className="metric-card-icon blue">
@@ -321,11 +310,11 @@ export default function AdminOrdersPage() {
             </div>
             <div className="metric-card-body">
               <div className="metric-card-value" style={{ color: 'var(--brand-600)' }}>
-                {allOrders.filter(o => getDisplayStatus(o.status) === 'pending').length}
+                {orderStats.pending}
               </div>
             </div>
           </div>
-          <div className="metric-card">
+          <div className="metric-card" style={{ cursor: 'pointer' }} onClick={() => setStatusFilter('shipped')}>
             <div className="metric-card-header">
               <div className="metric-card-title">Đang giao</div>
               <div className="metric-card-icon purple" style={{ backgroundColor: '#f3e8ff', color: '#9333ea' }}>
@@ -334,11 +323,11 @@ export default function AdminOrdersPage() {
             </div>
             <div className="metric-card-body">
               <div className="metric-card-value" style={{ color: '#9333ea' }}>
-                {allOrders.filter(o => getDisplayStatus(o.status) === 'shipped').length}
+                {orderStats.shipped}
               </div>
             </div>
           </div>
-          <div className="metric-card">
+          <div className="metric-card" style={{ cursor: 'pointer' }} onClick={() => setStatusFilter('completed')}>
             <div className="metric-card-header">
               <div className="metric-card-title">Hoàn thành</div>
               <div className="metric-card-icon green">
@@ -347,11 +336,11 @@ export default function AdminOrdersPage() {
             </div>
             <div className="metric-card-body">
               <div className="metric-card-value" style={{ color: 'var(--success-600)' }}>
-                {allOrders.filter(o => getDisplayStatus(o.status) === 'completed').length}
+                {orderStats.completed}
               </div>
             </div>
           </div>
-          <div className="metric-card">
+          <div className="metric-card" style={{ cursor: 'pointer' }} onClick={() => setStatusFilter('cancelled')}>
             <div className="metric-card-header">
               <div className="metric-card-title">Đã hủy</div>
               <div className="metric-card-icon" style={{ backgroundColor: 'var(--error-50)', color: 'var(--error-600)' }}>
@@ -360,7 +349,7 @@ export default function AdminOrdersPage() {
             </div>
             <div className="metric-card-body">
               <div className="metric-card-value" style={{ color: 'var(--error-600)' }}>
-                {allOrders.filter(o => getDisplayStatus(o.status) === 'cancelled').length}
+                {orderStats.cancelled}
               </div>
             </div>
           </div>

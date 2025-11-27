@@ -36,6 +36,7 @@ function formatDate(dateString) {
 export default function AdminCustomersPage() {
   const router = useRouter();
   const [customers, setCustomers] = useState([]);
+  const [customerStats, setCustomerStats] = useState({ total: 0, users: 0, admins: 0, banned: 0, active: 0, verified: 0 });
   const [loading, setLoading] = useState(true);
   const [roleFilter, setRoleFilter] = useState('all');
   const [banFilter, setBanFilter] = useState('all');
@@ -104,14 +105,33 @@ export default function AdminCustomersPage() {
     `.trim();
   };
 
+  // Fetch customer stats (separate API for speed)
+  const fetchCustomerStats = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/admin/customers/stats`);
+      if (response.ok) {
+        const stats = await response.json();
+        setCustomerStats(stats);
+      }
+    } catch (error) {
+      console.error('Error fetching customer stats:', error);
+    }
+  };
+
   useEffect(() => {
     const user = getCurrentUser();
     if (!user || user.role !== 'admin') {
       router.push('/');
       return;
     }
+    fetchCustomerStats(); // Fetch stats once on mount
     fetchCustomers();
-  }, [router, roleFilter, banFilter, page, searchQuery]);
+  }, [router]);
+
+  // Refetch customers when filters change
+  useEffect(() => {
+    fetchCustomers();
+  }, [roleFilter, banFilter, page, searchQuery]);
 
   const fetchCustomers = async () => {
     try {
@@ -144,6 +164,11 @@ export default function AdminCustomersPage() {
   };
 
   const handleBanToggle = async (customerId, currentBannedStatus) => {
+    // Optimistic update - cập nhật UI ngay lập tức
+    setCustomers(prev => prev.map(c => 
+      c.id === customerId ? { ...c, is_banned: !currentBannedStatus } : c
+    ));
+    
     try {
       await adminCustomerAPI.banCustomer(customerId, !currentBannedStatus);
       if (typeof window !== 'undefined') {
@@ -155,8 +180,12 @@ export default function AdminCustomersPage() {
           } 
         }));
       }
-      fetchCustomers();
+      fetchCustomerStats(); // Refresh stats
     } catch (error) {
+      // Rollback nếu lỗi
+      setCustomers(prev => prev.map(c => 
+        c.id === customerId ? { ...c, is_banned: currentBannedStatus } : c
+      ));
       console.error('Error toggling ban:', error);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('showToast', { 
@@ -167,6 +196,14 @@ export default function AdminCustomersPage() {
   };
 
   const handleRoleUpdate = async (customerId, newRole) => {
+    const oldRole = customers.find(c => c.id === customerId)?.role;
+    
+    // Optimistic update - cập nhật UI ngay lập tức
+    setCustomers(prev => prev.map(c => 
+      c.id === customerId ? { ...c, role: newRole } : c
+    ));
+    setOpenRoleDropdown(null); // Close dropdown ngay
+    
     try {
       await adminCustomerAPI.updateCustomerRole(customerId, newRole);
       if (typeof window !== 'undefined') {
@@ -174,9 +211,12 @@ export default function AdminCustomersPage() {
           detail: { message: 'Đã cập nhật role thành công', type: 'success', duration: 3000 } 
         }));
       }
-      setOpenRoleDropdown(null); // Close dropdown
-      fetchCustomers();
+      fetchCustomerStats(); // Refresh stats
     } catch (error) {
+      // Rollback nếu lỗi
+      setCustomers(prev => prev.map(c => 
+        c.id === customerId ? { ...c, role: oldRole } : c
+      ));
       console.error('Error updating role:', error);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('showToast', { 
@@ -342,7 +382,7 @@ export default function AdminCustomersPage() {
 
         {/* Stats Cards */}
         <div className="admin-grid admin-grid-cols-4" style={{ marginBottom: 'var(--space-8)' }}>
-          <div className="metric-card">
+          <div className="metric-card" style={{ cursor: 'pointer' }} onClick={() => { setRoleFilter('all'); setBanFilter('all'); }}>
             <div className="metric-card-header">
               <div className="metric-card-title">Tổng khách hàng</div>
               <div className="metric-card-icon blue">
@@ -351,11 +391,11 @@ export default function AdminCustomersPage() {
             </div>
             <div className="metric-card-body">
               <div className="metric-card-value" style={{ color: 'var(--brand-600)' }}>
-                {total}
+                {customerStats.total}
               </div>
             </div>
           </div>
-          <div className="metric-card">
+          <div className="metric-card" style={{ cursor: 'pointer' }} onClick={() => { setRoleFilter('user'); setBanFilter('all'); }}>
             <div className="metric-card-header">
               <div className="metric-card-title">Khách hàng</div>
               <div className="metric-card-icon green">
@@ -364,11 +404,11 @@ export default function AdminCustomersPage() {
             </div>
             <div className="metric-card-body">
               <div className="metric-card-value" style={{ color: 'var(--success-600)' }}>
-                {customers.filter(c => c.role === 'user').length}
+                {customerStats.users}
               </div>
             </div>
           </div>
-          <div className="metric-card">
+          <div className="metric-card" style={{ cursor: 'pointer' }} onClick={() => { setRoleFilter('admin'); setBanFilter('all'); }}>
             <div className="metric-card-header">
               <div className="metric-card-title">Quản trị viên</div>
               <div className="metric-card-icon purple" style={{ backgroundColor: '#f3e8ff', color: '#9333ea' }}>
@@ -377,11 +417,11 @@ export default function AdminCustomersPage() {
             </div>
             <div className="metric-card-body">
               <div className="metric-card-value" style={{ color: '#9333ea' }}>
-                {customers.filter(c => c.role === 'admin').length}
+                {customerStats.admins}
               </div>
             </div>
           </div>
-          <div className="metric-card">
+          <div className="metric-card" style={{ cursor: 'pointer' }} onClick={() => { setRoleFilter('all'); setBanFilter('banned'); }}>
             <div className="metric-card-header">
               <div className="metric-card-title">Tài khoản bị khóa</div>
               <div className="metric-card-icon" style={{ backgroundColor: 'var(--error-50)', color: 'var(--error-600)' }}>
@@ -390,7 +430,7 @@ export default function AdminCustomersPage() {
             </div>
             <div className="metric-card-body">
               <div className="metric-card-value" style={{ color: 'var(--error-600)' }}>
-                {customers.filter(c => c.is_banned).length}
+                {customerStats.banned}
               </div>
             </div>
           </div>
