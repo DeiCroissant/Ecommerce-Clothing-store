@@ -2745,6 +2745,11 @@ async def create_order(order_data: OrderCreate):
         import random
         order_number = f"VF{datetime.now().strftime('%Y%m%d')}{random.randint(1000, 9999)}"
         
+        # Determine payment status based on payment method
+        # COD = pending (admin sees immediately)
+        # VietQR = awaiting_payment (admin sees only after payment confirmed)
+        payment_status = "pending" if order_data.payment_method == "COD" else "awaiting_payment"
+        
         new_order = {
             "user_id": order_data.user_id,
             "order_number": order_number,
@@ -2752,6 +2757,7 @@ async def create_order(order_data: OrderCreate):
             "total_amount": order_data.total_amount,
             "shipping_address": order_data.shipping_address.dict() if hasattr(order_data.shipping_address, 'dict') else order_data.shipping_address,
             "payment_method": order_data.payment_method,
+            "payment_status": payment_status,
             "status": order_data.status,
             "note": order_data.note or "",
             "created_at": datetime.now().isoformat(),
@@ -2782,19 +2788,21 @@ async def create_order(order_data: OrderCreate):
         else:
             shipping_addr_obj = shipping_addr
         
-        # 🔔 WebSocket: Notify admin clients about new order
-        try:
-            await notify_new_order({
-                "id": str(result.inserted_id),
-                "order_number": new_order["order_number"],
-                "customer_name": shipping_addr.get("full_name", "Khách hàng") if isinstance(shipping_addr, dict) else shipping_addr.full_name,
-                "total_amount": new_order["total_amount"],
-                "items_count": len(new_order["items"]),
-                "status": new_order["status"],
-                "created_at": new_order["created_at"]
-            })
-        except Exception as ws_error:
-            print(f"WebSocket notification error: {ws_error}")
+        # 🔔 WebSocket: Notify admin clients about new order (only if COD or payment completed)
+        # VietQR orders will notify admin when payment is confirmed via webhook
+        if payment_status == "pending":  # COD orders
+            try:
+                await notify_new_order({
+                    "id": str(result.inserted_id),
+                    "order_number": new_order["order_number"],
+                    "customer_name": shipping_addr.get("full_name", "Khách hàng") if isinstance(shipping_addr, dict) else shipping_addr.full_name,
+                    "total_amount": new_order["total_amount"],
+                    "items_count": len(new_order["items"]),
+                    "status": new_order["status"],
+                    "created_at": new_order["created_at"]
+                })
+            except Exception as ws_error:
+                print(f"WebSocket notification error: {ws_error}")
         
         return OrderResponse(
             id=str(result.inserted_id),
@@ -2961,6 +2969,7 @@ async def casso_webhook(request: Request):
                 "payment.casso_id": casso_id,
                 "payment.completed_at": when,
                 "payment.raw_webhook": transaction,
+                "payment_status": "paid",
                 "status": "processing",
                 "updated_at": datetime.now().isoformat()
             }}
@@ -2968,6 +2977,23 @@ async def casso_webhook(request: Request):
         
         # Clear admin cache so admin sees the update immediately
         admin_orders_cache["data"] = None
+        
+        # 🔔 WebSocket: Notify admin clients about new paid order (VietQR)
+        try:
+            shipping_addr = order.get("shipping_address", {})
+            await notify_new_order({
+                "id": order_id,
+                "order_number": order.get("order_number", ""),
+                "customer_name": shipping_addr.get("full_name", "Khách hàng") if isinstance(shipping_addr, dict) else "Khách hàng",
+                "total_amount": expected_amount,
+                "items_count": len(order.get("items", [])),
+                "status": "processing",
+                "payment_method": "VietQR",
+                "created_at": order.get("created_at", datetime.now().isoformat())
+            })
+            print(f"📢 WebSocket: Notified admin about paid order {order_id}")
+        except Exception as ws_error:
+            print(f"WebSocket notification error: {ws_error}")
         
         msg = f"Đã cập nhật thanh toán cho order {order_id}"
         print(f"✅ {msg}")
@@ -3144,7 +3170,14 @@ async def get_all_orders(
     limit: int = Query(20, ge=1, le=100, description="Số lượng mỗi trang"),
     search: Optional[str] = Query(None, description="Tìm kiếm theo mã đơn hàng hoặc tên khách hàng")
 ):
-    """Lấy tất cả đơn hàng (Admin only) - TỐI ƯU"""
+    """Lấy tất cả đơn hàng (Admin only) - TỐI ƯU
+    
+    Chỉ hiển thị:
+    - Đơn hàng COD (payment_status = pending hoặc không có)
+    - Đơn hàng VietQR đã thanh toán (payment_status = paid)
+    
+    Không hiển thị đơn VietQR chưa thanh toán (payment_status = awaiting_payment)
+    """
     try:
         # Cache key
         cache_key = f"{status}_{page}_{limit}_{search}"
@@ -3161,7 +3194,14 @@ async def get_all_orders(
         
         print(f"🔄 Generating fresh admin orders data...")
         
-        query = {}
+        # Base query: Exclude orders with payment_status = "awaiting_payment"
+        # This means VietQR orders that haven't been paid yet won't show up
+        query = {
+            "$or": [
+                {"payment_status": {"$exists": False}},  # Old orders without this field
+                {"payment_status": {"$ne": "awaiting_payment"}}  # COD (pending) or VietQR (paid)
+            ]
+        }
         
         # Filter by status
         if status and status != 'all':
@@ -3173,14 +3213,22 @@ async def get_all_orders(
             from bson.errors import InvalidId
             # Try to search by order ID first
             try:
-                query["_id"] = ObjectId(search)
+                search_query = {"_id": ObjectId(search)}
+                search_query.update(query)
+                query = search_query
             except (InvalidId, ValueError):
                 # If not a valid ObjectId, search by order number, customer name, or phone
-                query["$or"] = [
-                    {"order_number": {"$regex": search, "$options": "i"}},
-                    {"shipping_address.full_name": {"$regex": search, "$options": "i"}},
-                    {"shipping_address.phone": {"$regex": search, "$options": "i"}}
-                ]
+                base_query = query.copy()
+                query = {
+                    "$and": [
+                        base_query,
+                        {"$or": [
+                            {"order_number": {"$regex": search, "$options": "i"}},
+                            {"shipping_address.full_name": {"$regex": search, "$options": "i"}},
+                            {"shipping_address.phone": {"$regex": search, "$options": "i"}}
+                        ]}
+                    ]
+                }
         
         # Calculate skip
         skip = (page - 1) * limit

@@ -91,7 +91,7 @@ export default function AdminOrdersPage() {
   const [allOrders, setAllOrders] = useState([]); // Store all orders for stats
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('pending'); // Default: Chỉ load đơn cần xác nhận
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);

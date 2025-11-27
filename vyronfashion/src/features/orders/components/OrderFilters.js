@@ -3,13 +3,14 @@
 import { Filter } from 'lucide-react'
 
 const statusOptions = [
-  { value: 'all', label: 'Tất cả' },
+  { value: 'all', label: 'Tất cả đơn hàng' },
   { value: 'pending', label: 'Chờ xác nhận' },
   { value: 'processing', label: 'Đang xử lý' },
-  { value: 'shipped', label: 'Đang giao' },
-  { value: 'delivered', label: 'Đã giao' },
+  { value: 'shipped', label: 'Đang giao hàng' },
+  { value: 'delivered', label: 'Đã giao hàng' },
+  { value: 'completed', label: 'Hoàn thành' },
   { value: 'cancelled', label: 'Đã hủy' },
-  { value: 'returned', label: 'Đã trả' },
+  { value: 'returned', label: 'Đã trả hàng' },
 ]
 
 export function OrderFilters({ activeFilter, onChange }) {
@@ -44,6 +45,16 @@ export function OrderFilters({ activeFilter, onChange }) {
           border: 1px solid #e4e4e7;
           border-radius: 0.5rem;
           background: white;
+          transition: all 0.2s;
+        }
+
+        .filter-wrapper:hover {
+          border-color: #a1a1aa;
+        }
+
+        .filter-wrapper:focus-within {
+          border-color: #18181b;
+          box-shadow: 0 0 0 3px rgba(24, 24, 27, 0.1);
         }
 
         .filter-icon {
@@ -58,7 +69,7 @@ export function OrderFilters({ activeFilter, onChange }) {
           color: #18181b;
           background: transparent;
           cursor: pointer;
-          min-width: 150px;
+          min-width: 160px;
         }
 
         .filter-select:focus {

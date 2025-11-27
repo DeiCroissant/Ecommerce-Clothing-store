@@ -125,6 +125,13 @@ export default function OrdersPage() {
   const filterOrders = () => {
     let filtered = [...orders]
 
+    // Sort by date - newest first
+    filtered.sort((a, b) => {
+      const dateA = new Date(a.createdAt || a.date || 0);
+      const dateB = new Date(b.createdAt || b.date || 0);
+      return dateB - dateA;
+    });
+
     // Filter by status
     if (statusFilter !== 'all') {
       filtered = filtered.filter(order => order.status === statusFilter)
@@ -167,7 +174,7 @@ export default function OrdersPage() {
     <div className="orders-page">
       <PageHeader
         title="Đơn hàng của tôi"
-        description="Theo dõi và quản lý đơn hàng của bạn"
+        description={`Bạn có ${orders.length} đơn hàng`}
       />
 
       {orders.length === 0 ? (
@@ -180,6 +187,22 @@ export default function OrdersPage() {
         />
       ) : (
         <>
+          {/* Order Stats */}
+          <div className="order-stats">
+            <div className="stat-item">
+              <span className="stat-value">{orders.filter(o => o.status === 'pending').length}</span>
+              <span className="stat-label">Chờ xác nhận</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-value">{orders.filter(o => o.status === 'processing' || o.status === 'shipped').length}</span>
+              <span className="stat-label">Đang xử lý</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-value">{orders.filter(o => o.status === 'delivered' || o.status === 'completed').length}</span>
+              <span className="stat-label">Hoàn thành</span>
+            </div>
+          </div>
+
           <div className="orders-controls">
             <OrderSearch value={searchQuery} onChange={setSearchQuery} />
             <OrderFilters activeFilter={statusFilter} onChange={setStatusFilter} />
@@ -192,7 +215,10 @@ export default function OrdersPage() {
               description="Không có đơn hàng nào phù hợp với bộ lọc của bạn"
             />
           ) : (
-            <OrderList orders={filteredOrders} />
+            <>
+              <p className="results-count">Hiển thị {filteredOrders.length} đơn hàng</p>
+              <OrderList orders={filteredOrders} />
+            </>
           )}
         </>
       )}
@@ -202,11 +228,52 @@ export default function OrdersPage() {
           max-width: 1200px;
         }
 
+        .order-stats {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 1rem;
+          margin-bottom: 1.5rem;
+        }
+
+        .stat-item {
+          background: white;
+          border: 1px solid #e4e4e7;
+          border-radius: 0.75rem;
+          padding: 1.25rem;
+          text-align: center;
+          transition: all 0.2s;
+        }
+
+        .stat-item:hover {
+          border-color: #18181b;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .stat-value {
+          display: block;
+          font-size: 1.75rem;
+          font-weight: 700;
+          color: #18181b;
+          line-height: 1;
+          margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+          font-size: 0.875rem;
+          color: #71717a;
+        }
+
         .orders-controls {
           display: flex;
           flex-direction: column;
           gap: 1rem;
-          margin-bottom: 2rem;
+          margin-bottom: 1.5rem;
+        }
+
+        .results-count {
+          font-size: 0.875rem;
+          color: #71717a;
+          margin-bottom: 1rem;
         }
 
         @media (min-width: 768px) {
@@ -214,6 +281,25 @@ export default function OrdersPage() {
             flex-direction: row;
             align-items: center;
             justify-content: space-between;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .order-stats {
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.5rem;
+          }
+
+          .stat-item {
+            padding: 1rem 0.5rem;
+          }
+
+          .stat-value {
+            font-size: 1.25rem;
+          }
+
+          .stat-label {
+            font-size: 0.75rem;
           }
         }
       `}</style>
