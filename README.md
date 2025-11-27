@@ -173,8 +173,8 @@ Ecommerce-Clothing-store/
 │   │   └── styles/        # CSS styles
 │   └── package.json
 │
-├── START_ALL.bat           # Script khởi động
-└── README.md
+├──README.md
+
 ```
 
 ## 📄 License
