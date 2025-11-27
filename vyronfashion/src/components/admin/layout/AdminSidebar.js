@@ -143,12 +143,13 @@ export function AdminSidebar() {
             </button>
           ) : (
             <>
-              <Link href="/" className="sidebar-logo" title="Về trang chủ">
+              {/* Sử dụng <a> thay vì <Link> để force hard reload, tránh vỡ layout */}
+              <a href="/" className="sidebar-logo" title="Về trang chủ">
                 <div className="sidebar-logo-icon">
                   <Sparkles size={20} />
                 </div>
                 <span className="sidebar-logo-text">VyronFashion</span>
-              </Link>
+              </a>
               
               {/* Desktop Toggle - chỉ hiển thị khi mở rộng */}
               <button
