@@ -46,23 +46,17 @@
 
 ## 🛠️ Công nghệ sử dụng
 
-### Frontend
-- **Next.js 15** - React Framework
-- **React 19** - UI Library
-- **TailwindCSS** - Styling
-- **Framer Motion** - Animations
-- **Lucide React** - Icons
+<div align="center">
 
-### Backend
-- **FastAPI** - Python Web Framework
-- **MongoDB** - NoSQL Database
-- **Cloudinary** - Image Storage
-- **JWT** - Authentication
+<p>
+  <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/Next.js-black?style=for-the-badge&logo=next.js&logoColor=white" alt="Next.js" />
+  <img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL" />
+  <img src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker" />
+</p>
 
-### Tích hợp
-- **VietQR** - Thanh toán QR
-- **Cloudflare Turnstile** - Bot Protection
-- **Nodemailer** - Email Service
+</div>
 
 ---
 
